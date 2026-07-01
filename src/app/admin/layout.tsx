@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { Avatar } from "@/components/Avatar";
 import {
   ChartIcon,
   FilmIcon,
@@ -94,12 +95,7 @@ export default function AdminLayout({
         </nav>
 
         <div className="mt-auto flex items-center gap-3 rounded-lg p-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={user.avatar}
-            alt={user.name}
-            className="h-9 w-9 rounded-full bg-white/10 ring-1 ring-white/15"
-          />
+          <Avatar name={user.name} size={36} className="ring-1 ring-white/15" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{user.name}</p>
             <p className="truncate text-xs text-white/40">{user.email}</p>

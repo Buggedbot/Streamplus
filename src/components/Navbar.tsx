@@ -2,13 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WatchIcon, ReelsIcon, ChartIcon } from "@/components/icons";
+import {
+  WatchIcon,
+  ReelsIcon,
+  PartyIcon,
+  CommentIcon,
+  ChartIcon,
+} from "@/components/icons";
+import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/lib/auth";
 
 const LINKS = [
   { href: "/", label: "Watch", Icon: WatchIcon },
   { href: "/reels", label: "Reels", Icon: ReelsIcon },
+  { href: "/party", label: "Party", Icon: PartyIcon },
+  { href: "/chat", label: "Chat", Icon: CommentIcon },
 ];
+
+function isActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -26,7 +39,7 @@ export default function Navbar() {
         </Link>
         <nav className="flex items-center gap-1">
           {LINKS.map(({ href, label, Icon }) => {
-            const active = pathname === href;
+            const active = isActive(pathname, href);
             return (
               <Link
                 key={href}
@@ -57,12 +70,7 @@ export default function Navbar() {
 
           {user ? (
             <Link href="/admin" className="ml-1 flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={user.avatar}
-                alt={user.name}
-                className="h-8 w-8 rounded-full bg-white/10 ring-1 ring-white/15"
-              />
+              <Avatar name={user.name} size={32} className="ring-1 ring-white/15" />
             </Link>
           ) : (
             <Link
@@ -78,7 +86,7 @@ export default function Navbar() {
       {/* Mobile bottom tab bar */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex justify-around items-stretch bg-black/80 backdrop-blur-xl border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
         {LINKS.map(({ href, label, Icon }) => {
-          const active = pathname === href;
+          const active = isActive(pathname, href);
           return (
             <Link
               key={href}
@@ -95,18 +103,13 @@ export default function Navbar() {
         <Link
           href={user ? "/admin" : "/login"}
           className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
-            pathname.startsWith("/admin") || pathname.startsWith("/login")
+            isActive(pathname, "/admin") || isActive(pathname, "/login")
               ? "text-white"
               : "text-white/45"
           }`}
         >
           {user ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={user.avatar}
-              alt={user.name}
-              className="h-[22px] w-[22px] rounded-full bg-white/10 ring-1 ring-white/15"
-            />
+            <Avatar name={user.name} size={22} className="ring-1 ring-white/15" />
           ) : (
             <ChartIcon width={22} height={22} />
           )}

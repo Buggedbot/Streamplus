@@ -179,6 +179,97 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function PartyIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="m10 8 4 2.5-4 2.5V8Z" fill="currentColor" stroke="none" />
+      <path d="M6 21c1.5-1.3 3.5-2 6-2s4.5.7 6 2" />
+    </svg>
+  );
+}
+
+export function MicIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0M12 19v3" />
+    </svg>
+  );
+}
+
+export function MicOffIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M9 9v2a3 3 0 0 0 5 2.2M15 10.5V5a3 3 0 0 0-5.8-1.1" />
+      <path d="M5 10a7 7 0 0 0 10.7 6M19 10a7 7 0 0 1-.6 2.8M12 19v3" />
+      <path d="m2 2 20 20" />
+    </svg>
+  );
+}
+
+export function ScreenShareIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+      <path d="M12 13V7M9.5 9.5 12 7l2.5 2.5" />
+    </svg>
+  );
+}
+
+export function PhoneOffIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M10.7 13.3a11 11 0 0 0 2.6 1.9l2.3-2.3a1 1 0 0 1 1-.24 11.3 11.3 0 0 0 3.1.5 1 1 0 0 1 1 1V17a1 1 0 0 1-1 1 17 17 0 0 1-9.4-2.9" />
+      <path d="M6.3 9.5A17 17 0 0 1 5 5a1 1 0 0 1 1-1h2.5a1 1 0 0 1 1 .9c.06 1 .25 2 .5 3a1 1 0 0 1-.25 1L7.5 11" />
+      <path d="m2 2 20 20" />
+    </svg>
+  );
+}
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function SendIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22l-4-9-9-4Z" />
+    </svg>
+  );
+}
+
 export function GoogleIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" width={20} height={20} {...props}>
