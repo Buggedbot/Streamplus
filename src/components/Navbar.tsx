@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WatchIcon, ReelsIcon } from "@/components/icons";
+import { WatchIcon, ReelsIcon, ChartIcon } from "@/components/icons";
+import { useAuth } from "@/lib/auth";
 
 const LINKS = [
   { href: "/", label: "Watch", Icon: WatchIcon },
@@ -11,6 +12,7 @@ const LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <>
@@ -40,6 +42,36 @@ export default function Navbar() {
               </Link>
             );
           })}
+
+          <span className="mx-2 h-6 w-px bg-white/10" />
+
+          {user?.role === "admin" && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <ChartIcon width={18} height={18} />
+              Admin
+            </Link>
+          )}
+
+          {user ? (
+            <Link href="/admin" className="ml-1 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={user.avatar}
+                alt={user.name}
+                className="h-8 w-8 rounded-full bg-white/10 ring-1 ring-white/15"
+              />
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="ml-1 rounded-full bg-white text-black px-4 py-2 text-sm font-semibold hover:bg-white/90 transition-colors"
+            >
+              Sign in
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -60,6 +92,26 @@ export default function Navbar() {
             </Link>
           );
         })}
+        <Link
+          href={user ? "/admin" : "/login"}
+          className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+            pathname.startsWith("/admin") || pathname.startsWith("/login")
+              ? "text-white"
+              : "text-white/45"
+          }`}
+        >
+          {user ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={user.avatar}
+              alt={user.name}
+              className="h-[22px] w-[22px] rounded-full bg-white/10 ring-1 ring-white/15"
+            />
+          ) : (
+            <ChartIcon width={22} height={22} />
+          )}
+          {user ? "Account" : "Sign in"}
+        </Link>
       </nav>
     </>
   );

@@ -116,3 +116,88 @@ export function DownloadIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ChartIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 3v18h18" />
+      <path d="M7 15l3-4 3 2 4-6" />
+    </svg>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+export function FlagIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1Z" />
+      <path d="M4 22v-7" />
+    </svg>
+  );
+}
+
+export function FilmIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="2" y="3" width="20" height="18" rx="2" />
+      <path d="M7 3v18M17 3v18M2 9h5M2 15h5M17 9h5M17 15h5" />
+    </svg>
+  );
+}
+
+export function LogoutIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5M21 12H9" />
+    </svg>
+  );
+}
+
+export function StarIcon({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <svg {...base(props)} fill={filled ? "currentColor" : "none"}>
+      <path d="m12 3 2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 17.8 6.7 19l1-5.8L3.5 9.2l5.9-.9Z" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
+export function GoogleIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} {...props}>
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.61 0 3.06.55 4.2 1.64l3.15-3.15C17.45 1.4 14.97.4 12 .4A11 11 0 0 0 2.18 7.06L5.84 9.9C6.71 7.3 9.14 4.75 12 4.75Z"
+      />
+    </svg>
+  );
+}

@@ -65,3 +65,58 @@ export const TRENDING = REELS.map((r) => ({
   src: r.src,
   channel: r.username,
 }));
+
+// ---------------------------------------------------------------------------
+// Admin dashboard mock data (no backend yet — seed data for the UI).
+// ---------------------------------------------------------------------------
+
+export type AdminUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "viewer";
+  status: "active" | "suspended";
+  joined: string;
+};
+
+export const ADMIN_USERS: AdminUser[] = [
+  { id: "u_admin", name: "Demo Admin", email: "admin@streamplus.app", role: "admin", status: "active", joined: "2026-01-04" },
+  { id: "u_1", name: "Aisha Khan", email: "aisha@example.com", role: "viewer", status: "active", joined: "2026-02-11" },
+  { id: "u_2", name: "Marco Silva", email: "marco@example.com", role: "viewer", status: "active", joined: "2026-03-02" },
+  { id: "u_3", name: "Lena Fischer", email: "lena@example.com", role: "viewer", status: "suspended", joined: "2026-03-19" },
+  { id: "u_4", name: "Diego Torres", email: "diego@example.com", role: "viewer", status: "active", joined: "2026-04-07" },
+  { id: "u_5", name: "Priya Nair", email: "priya@example.com", role: "admin", status: "active", joined: "2026-05-21" },
+];
+
+export type Report = {
+  id: string;
+  reelId: string;
+  reelCaption: string;
+  reason: string;
+  reportedBy: string;
+  createdAt: string;
+  status: "pending" | "resolved" | "dismissed";
+};
+
+export const REPORTS: Report[] = [
+  { id: "r_1", reelId: "3", reelCaption: "Sample reel #3 — swap me for real content", reason: "Spam / misleading", reportedBy: "aisha@example.com", createdAt: "2026-06-28", status: "pending" },
+  { id: "r_2", reelId: "1", reelCaption: "Sample reel #1 — swap me for real content", reason: "Copyright", reportedBy: "marco@example.com", createdAt: "2026-06-29", status: "pending" },
+  { id: "r_3", reelId: "5", reelCaption: "Sample reel #5 — swap me for real content", reason: "Inappropriate content", reportedBy: "diego@example.com", createdAt: "2026-06-30", status: "pending" },
+];
+
+export const ANALYTICS = {
+  totals: [
+    { label: "Total views", value: "1.2M", delta: "+12.4%" },
+    { label: "Active users", value: "48.3K", delta: "+6.1%" },
+    { label: "Reels uploaded", value: "3,204", delta: "+3.8%" },
+    { label: "Avg. watch time", value: "4m 12s", delta: "+0.9%" },
+  ],
+  // 7-day view counts (in thousands) for a simple sparkline/bar chart.
+  weeklyViews: [120, 145, 132, 168, 190, 176, 205],
+  topContent: REELS.slice(0, 4).map((r, i) => ({
+    id: r.id,
+    title: r.caption,
+    channel: r.username,
+    views: [412000, 331000, 289000, 214000][i],
+  })),
+};
