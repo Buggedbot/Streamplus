@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { TRENDING } from "@/lib/mock-data";
+import { LinkIcon, DownloadIcon, PlayIcon } from "@/components/icons";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -11,7 +12,13 @@ const DIRECT_FILE_RE = /\.(mp4|webm|ogg|mov|m3u8)(\?.*)?$/i;
 export default function WatchPage() {
   const [urlInput, setUrlInput] = useState("");
   const [activeUrl, setActiveUrl] = useState<string>(TRENDING[0].src);
+  const [activeTitle, setActiveTitle] = useState<string>(TRENDING[0].title);
   const [error, setError] = useState("");
+
+  function play(url: string, title: string) {
+    setActiveUrl(url);
+    setActiveTitle(title);
+  }
 
   function handleLoad(e: React.FormEvent) {
     e.preventDefault();
@@ -24,72 +31,108 @@ export default function WatchPage() {
       return;
     }
     setError("");
-    setActiveUrl(trimmed);
+    play(trimmed, "Pasted link");
   }
 
   const canDownload = DIRECT_FILE_RE.test(activeUrl);
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-6 flex flex-col gap-6">
-      <form onSubmit={handleLoad} className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          placeholder="Paste a video link (YouTube, Vimeo, Twitch, direct MP4/HLS...)"
-          className="flex-1 rounded-lg bg-white/5 border border-white/10 px-4 py-3 text-sm outline-none focus:border-violet-500 placeholder:text-white/40"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-violet-600 hover:bg-violet-500 transition-colors px-6 py-3 text-sm font-semibold"
-        >
-          Play
-        </button>
+    <div className="w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-8">
+      {/* Link input */}
+      <form onSubmit={handleLoad} className="flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="relative flex-1">
+            <LinkIcon
+              width={18}
+              height={18}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40"
+            />
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Paste a video link — YouTube, Vimeo, Twitch, MP4…"
+              className="w-full rounded-xl bg-white/5 border border-white/10 pl-11 pr-4 py-3.5 text-sm outline-none transition-colors focus:border-violet-500 focus:bg-white/[0.07] placeholder:text-white/40"
+            />
+          </div>
+          <button
+            type="submit"
+            className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-[0.98] transition px-6 py-3.5 text-sm font-semibold"
+          >
+            <PlayIcon width={16} height={16} />
+            Play
+          </button>
+        </div>
+        {error && <p className="text-red-400 text-sm px-1">{error}</p>}
       </form>
-      {error && <p className="text-red-400 text-sm -mt-3">{error}</p>}
 
-      <div className="w-full aspect-video rounded-xl overflow-hidden bg-white/5 border border-white/10">
-        <ReactPlayer
-          key={activeUrl}
-          src={activeUrl}
-          playing
-          controls
-          width="100%"
-          height="100%"
-        />
+      {/* Player */}
+      <div className="flex flex-col gap-3">
+        <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl shadow-black/50">
+          <ReactPlayer
+            key={activeUrl}
+            src={activeUrl}
+            playing
+            controls
+            width="100%"
+            height="100%"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4 px-1">
+          <p className="text-sm font-medium text-white/80 line-clamp-1">
+            {activeTitle}
+          </p>
+          {canDownload && (
+            <a
+              href={activeUrl}
+              download
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <DownloadIcon width={15} height={15} />
+              Download
+            </a>
+          )}
+        </div>
       </div>
 
-      {canDownload && (
-        <a
-          href={activeUrl}
-          download
-          className="self-start text-sm text-violet-400 hover:text-violet-300 underline underline-offset-4"
-        >
-          Download this file
-        </a>
-      )}
-
+      {/* Trending */}
       <section>
-        <h2 className="text-lg font-semibold mb-3">Trending</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {TRENDING.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveUrl(item.src)}
-              className="text-left group"
-            >
-              <div className="aspect-video rounded-lg overflow-hidden bg-white/5 border border-white/10 mb-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.thumbnail}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                />
-              </div>
-              <p className="text-xs font-medium line-clamp-1">{item.title}</p>
-              <p className="text-xs text-white/40">{item.channel}</p>
-            </button>
-          ))}
+        <h2 className="text-base font-semibold mb-4 text-white/90">Trending</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5">
+          {TRENDING.map((item) => {
+            const active = item.src === activeUrl;
+            return (
+              <button
+                key={item.id}
+                onClick={() => play(item.src, item.title)}
+                className="text-left group focus:outline-none"
+              >
+                <div
+                  className={`relative aspect-video rounded-xl overflow-hidden bg-white/5 border mb-2 transition-colors ${
+                    active
+                      ? "border-violet-500"
+                      : "border-white/10 group-hover:border-white/25"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.thumbnail}
+                    alt={item.title}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-colors">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/0 group-hover:bg-white/90 group-hover:text-black transition-all scale-75 group-hover:scale-100">
+                      <PlayIcon width={18} height={18} className="translate-x-0.5" />
+                    </span>
+                  </span>
+                </div>
+                <p className="text-sm font-medium line-clamp-1 text-white/90">
+                  {item.title}
+                </p>
+                <p className="text-xs text-white/40 mt-0.5">{item.channel}</p>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>
