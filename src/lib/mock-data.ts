@@ -177,27 +177,10 @@ export const AUTO_REPLIES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Watch party mock data.
+// Watch party.
 // ---------------------------------------------------------------------------
 
-export type Participant = {
-  id: string;
-  name: string;
-  host?: boolean;
-};
-
-export const PARTY_PARTICIPANTS: Participant[] = [
-  { id: "p_me", name: "You", host: true },
-  { id: "p1", name: "Aisha Khan" },
-  { id: "p2", name: "Marco Silva" },
-  { id: "p3", name: "Priya Nair" },
-];
-
-export const PARTY_CHAT_SEED: ChatMessage[] = [
-  { id: "pm1", from: "them", text: "this part is so good", time: "now" },
-  { id: "pm2", from: "them", text: "wait rewind 😂", time: "now" },
-];
-
+// Default clip a fresh party room plays until someone loads another link.
 export const DEFAULT_PARTY_VIDEO = REELS[0].src;
 
 export const ANALYTICS = {

@@ -1,19 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import {
-  PARTY_PARTICIPANTS,
-  PARTY_CHAT_SEED,
-  AUTO_REPLIES,
-  DEFAULT_PARTY_VIDEO,
-  type ChatMessage,
-} from "@/lib/mock-data";
+import { DEFAULT_PARTY_VIDEO } from "@/lib/mock-data";
+import { useSocket } from "@/lib/useSocket";
+import { useWebRTC, type RemoteMedia } from "@/lib/useWebRTC";
+import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/Avatar";
 import {
-  PlayIcon,
-  PauseIcon,
   MicIcon,
   MicOffIcon,
   ScreenShareIcon,
@@ -25,43 +19,137 @@ import {
   CommentIcon,
 } from "@/components/icons";
 
-const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
+type ChatMsg = {
+  id: string;
+  fromId: string;
+  name: string;
+  text: string;
+};
+
+type Participant = { id: string; name: string };
+
+function MediaTile({
+  stream,
+  label,
+  muted,
+}: {
+  stream: MediaStream;
+  label: string;
+  muted?: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream;
+  }, [stream]);
+  const hasVideo = stream.getVideoTracks().length > 0;
+  return (
+    <div className="relative aspect-video rounded-lg overflow-hidden bg-white/5 border border-white/10">
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted={muted}
+        className={`h-full w-full object-cover ${hasVideo ? "" : "opacity-0"}`}
+      />
+      {!hasVideo && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Avatar name={label} size={40} />
+        </div>
+      )}
+      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px]">
+        {label}
+      </span>
+    </div>
+  );
+}
 
 function RoomInner() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
+
   const roomId = params.id;
   const videoUrl = search.get("v") || DEFAULT_PARTY_VIDEO;
 
-  const [playing, setPlaying] = useState(true);
-  const [micOn, setMicOn] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"chat" | "people">("chat");
-  const [messages, setMessages] = useState<ChatMessage[]>(PARTY_CHAT_SEED);
-  const [draft, setDraft] = useState("");
+  const { socket: socketRef, connected } = useSocket();
+  const { micOn, sharing, localScreen, remotes, notice, toggleMic, toggleShare } =
+    useWebRTC(socketRef, connected);
 
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [myId, setMyId] = useState("");
+  const [draft, setDraft] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<"chat" | "people">("chat");
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const applyingRemote = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  // Stop any live media tracks when leaving the room.
+  const [guestName] = useState(
+    () => `Guest-${Math.random().toString(36).slice(2, 6)}`
+  );
+  const name = user?.name || guestName;
+  const nameRef = useRef(name);
   useEffect(() => {
-    return () => {
-      micStreamRef.current?.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
+    nameRef.current = name;
+  });
 
-  // Bind the captured screen stream to the preview element.
+  // Apply an authoritative playback state coming from the room.
+  const applyPlayback = useCallback(
+    (pb: { playing: boolean; time: number; at: number }) => {
+      const v = videoRef.current;
+      if (!v) return;
+      applyingRemote.current = true;
+      const elapsed = pb.playing ? (Date.now() - pb.at) / 1000 : 0;
+      const target = pb.time + elapsed;
+      if (Number.isFinite(target) && Math.abs(v.currentTime - target) > 1.5) {
+        v.currentTime = target;
+      }
+      if (pb.playing && v.paused) v.play().catch(() => {});
+      if (!pb.playing && !v.paused) v.pause();
+      setTimeout(() => {
+        applyingRemote.current = false;
+      }, 400);
+    },
+    []
+  );
+
+  // Wire up realtime: join the room and subscribe to chat/presence/playback.
   useEffect(() => {
-    if (sharing && screenVideoRef.current && screenStreamRef.current) {
-      screenVideoRef.current.srcObject = screenStreamRef.current;
-    }
-  }, [sharing]);
+    const socket = socketRef.current;
+    if (!connected || !socket) return;
+
+    const onSync = (data: {
+      playback: { playing: boolean; time: number; at: number };
+      messages: ChatMsg[];
+      you?: { id: string; name: string };
+    }) => {
+      setMessages(data.messages ?? []);
+      if (data.you?.id) setMyId(data.you.id);
+      applyPlayback(data.playback);
+    };
+    const onPresence = (p: Participant[]) => setParticipants(p);
+    const onChat = (m: ChatMsg) => setMessages((prev) => [...prev, m]);
+    const onPlayback = (pb: { playing: boolean; time: number; at: number }) =>
+      applyPlayback(pb);
+
+    socket.on("sync", onSync);
+    socket.on("presence", onPresence);
+    socket.on("chat", onChat);
+    socket.on("playback", onPlayback);
+
+    socket.emit("join", { roomId, name: nameRef.current });
+
+    return () => {
+      socket.off("sync", onSync);
+      socket.off("presence", onPresence);
+      socket.off("chat", onChat);
+      socket.off("playback", onPlayback);
+      socket.emit("leave");
+    };
+  }, [connected, roomId, socketRef, applyPlayback]);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({
@@ -69,49 +157,22 @@ function RoomInner() {
     });
   }, [messages.length, tab]);
 
-  function flashNotice(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(""), 3500);
+  function emitPlayback() {
+    if (applyingRemote.current) return;
+    const v = videoRef.current;
+    if (!v) return;
+    socketRef.current?.emit("playback", {
+      playing: !v.paused,
+      time: v.currentTime,
+    });
   }
 
-  async function toggleMic() {
-    if (micOn) {
-      micStreamRef.current?.getTracks().forEach((t) => t.stop());
-      micStreamRef.current = null;
-      setMicOn(false);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
-      setMicOn(true);
-    } catch {
-      flashNotice("Couldn't access your microphone (permission or device).");
-    }
-  }
-
-  function stopSharing() {
-    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    screenStreamRef.current = null;
-    setSharing(false);
-  }
-
-  async function toggleShare() {
-    if (sharing) {
-      stopSharing();
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
-      screenStreamRef.current = stream;
-      stream.getVideoTracks()[0]?.addEventListener("ended", stopSharing);
-      setSharing(true);
-    } catch {
-      flashNotice("Screen share was cancelled or isn't available here.");
-    }
+  function sendChat(e: React.FormEvent) {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    socketRef.current?.emit("chat", { text });
   }
 
   async function copyInvite() {
@@ -120,40 +181,28 @@ function RoomInner() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      flashNotice("Couldn't copy — copy the URL from the address bar.");
+      /* user can copy from the address bar */
     }
   }
 
   function leave() {
-    stopSharing();
-    micStreamRef.current?.getTracks().forEach((t) => t.stop());
     router.push("/party");
   }
 
-  function sendChat(e: React.FormEvent) {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
-    setMessages((ms) => [
-      ...ms,
-      { id: `me-${Date.now()}`, from: "me", text, time: "now" },
-    ]);
-    const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-    setTimeout(() => {
-      setMessages((ms) => [
-        ...ms,
-        { id: `them-${Date.now()}`, from: "them", text: reply, time: "now" },
-      ]);
-    }, 1000);
-  }
+  const mediaTiles: RemoteMedia[] = remotes;
+  const showStrip = Boolean(localScreen) || mediaTiles.length > 0;
 
   return (
     <div className="w-full max-w-6xl mx-auto px-3 sm:px-4 py-4 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs text-white/40">Watch party</p>
+          <p className="text-xs text-white/40">
+            Watch party ·{" "}
+            <span className={connected ? "text-emerald-400" : "text-white/40"}>
+              {connected ? "connected" : "connecting…"}
+            </span>
+          </p>
           <p className="font-mono text-sm font-semibold truncate">
             Room {roomId}
           </p>
@@ -194,106 +243,99 @@ function RoomInner() {
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Player + controls */}
         <div className="flex-1 min-w-0 flex flex-col gap-3">
-          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10">
-            {sharing ? (
-              <>
-                <video
-                  ref={screenVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="h-full w-full object-contain bg-black"
-                />
-                <span className="absolute top-3 left-3 rounded-full bg-emerald-600/90 px-2.5 py-1 text-xs font-medium">
-                  You&apos;re sharing your screen
-                </span>
-              </>
-            ) : (
-              <ReactPlayer
-                key={videoUrl}
-                src={videoUrl}
-                playing={playing}
-                controls
-                width="100%"
-                height="100%"
-              />
-            )}
+          <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10">
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              controls
+              muted
+              playsInline
+              className="h-full w-full"
+              onPlay={emitPlayback}
+              onPause={emitPlayback}
+              onSeeked={emitPlayback}
+            />
           </div>
+
+          {/* Voice / screen media strip */}
+          {showStrip && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {localScreen && (
+                <MediaTile stream={localScreen} label="You (screen)" muted />
+              )}
+              {mediaTiles.map((r) => (
+                <MediaTile key={r.id} stream={r.stream} label={r.name} />
+              ))}
+            </div>
+          )}
 
           {/* Control bar */}
           <div className="flex items-center justify-center gap-2 sm:gap-3">
             <button
-              onClick={() => setPlaying((p) => !p)}
-              disabled={sharing}
-              className="flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/15 disabled:opacity-40 px-4 py-2.5 text-sm font-medium transition-colors"
-              title="Play/pause for everyone"
-            >
-              {playing ? (
-                <PauseIcon width={18} height={18} />
-              ) : (
-                <PlayIcon width={18} height={18} />
-              )}
-              <span className="hidden sm:inline">
-                {playing ? "Pause" : "Play"}
-              </span>
-            </button>
-
-            <button
               onClick={toggleMic}
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
+              className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
                 micOn
                   ? "bg-violet-600 hover:bg-violet-500"
                   : "bg-white/10 hover:bg-white/15"
               }`}
               aria-pressed={micOn}
-              title={micOn ? "Mute mic" : "Turn on mic"}
             >
               {micOn ? (
                 <MicIcon width={18} height={18} />
               ) : (
                 <MicOffIcon width={18} height={18} />
               )}
+              <span className="hidden sm:inline">
+                {micOn ? "Mic on" : "Mic"}
+              </span>
             </button>
 
             <button
               onClick={toggleShare}
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
+              className={`flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
                 sharing
                   ? "bg-emerald-600 hover:bg-emerald-500"
                   : "bg-white/10 hover:bg-white/15"
               }`}
               aria-pressed={sharing}
-              title={sharing ? "Stop sharing" : "Share your screen"}
             >
               <ScreenShareIcon width={18} height={18} />
+              <span className="hidden sm:inline">
+                {sharing ? "Stop share" : "Share screen"}
+              </span>
             </button>
           </div>
 
           <p className="text-center text-xs text-white/35">
-            Play/pause and voice sync to everyone in the room once the realtime
-            server is connected.
+            Playback stays in sync for everyone in the room. Mic & screen share
+            stream peer-to-peer over WebRTC.
           </p>
         </div>
 
         {/* Side panel */}
-        <div className="w-full lg:w-80 shrink-0 flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden h-[420px] lg:h-auto lg:min-h-[420px]">
+        <div className="w-full lg:w-80 shrink-0 flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden h-[420px] lg:h-auto lg:min-h-[460px]">
           <div className="flex border-b border-white/10">
             {(["chat", "people"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium capitalize transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
                   tab === t
                     ? "text-white border-b-2 border-violet-500"
                     : "text-white/45 hover:text-white"
                 }`}
               >
                 {t === "chat" ? (
-                  <CommentIcon width={16} height={16} />
+                  <>
+                    <CommentIcon width={16} height={16} />
+                    Chat
+                  </>
                 ) : (
-                  <UsersIcon width={16} height={16} />
+                  <>
+                    <UsersIcon width={16} height={16} />
+                    People · {participants.length}
+                  </>
                 )}
-                {t === "people" ? `People · ${PARTY_PARTICIPANTS.length}` : "Chat"}
               </button>
             ))}
           </div>
@@ -304,24 +346,37 @@ function RoomInner() {
                 ref={chatScrollRef}
                 className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2"
               >
-                {messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${
-                      m.from === "me" ? "justify-end" : "justify-start"
-                    }`}
-                  >
+                {messages.length === 0 && (
+                  <p className="text-center text-xs text-white/35 pt-4">
+                    Say hi 👋
+                  </p>
+                )}
+                {messages.map((m) => {
+                  const mine = m.fromId === myId;
+                  return (
                     <div
-                      className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-sm ${
-                        m.from === "me"
-                          ? "bg-violet-600 rounded-br-md"
-                          : "bg-white/10 rounded-bl-md"
+                      key={m.id}
+                      className={`flex flex-col ${
+                        mine ? "items-end" : "items-start"
                       }`}
                     >
-                      {m.text}
+                      {!mine && (
+                        <span className="text-[11px] text-white/40 px-1">
+                          {m.name}
+                        </span>
+                      )}
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-sm ${
+                          mine
+                            ? "bg-violet-600 rounded-br-md"
+                            : "bg-white/10 rounded-bl-md"
+                        }`}
+                      >
+                        {m.text}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <form
                 onSubmit={sendChat}
@@ -345,18 +400,23 @@ function RoomInner() {
             </>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto p-2">
-              {PARTY_PARTICIPANTS.map((p) => (
+              {participants.length === 0 && (
+                <p className="text-center text-xs text-white/35 pt-4">
+                  Waiting for people to join…
+                </p>
+              )}
+              {participants.map((p) => (
                 <div
                   key={p.id}
                   className="flex items-center gap-3 px-2 py-2.5 rounded-lg"
                 >
                   <Avatar name={p.name} size={36} />
-                  <span className="flex-1 text-sm font-medium">{p.name}</span>
-                  {p.host && (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/60">
-                      Host
-                    </span>
-                  )}
+                  <span className="flex-1 text-sm font-medium">
+                    {p.name}
+                    {p.id === myId && (
+                      <span className="text-white/40"> (You)</span>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
