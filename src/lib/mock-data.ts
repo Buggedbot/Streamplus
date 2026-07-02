@@ -105,75 +105,22 @@ export const REPORTS: Report[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Chat / friends mock data (frontend-first — no realtime backend yet).
+// Chat directory. Conversations are shared realtime channels backed by the
+// Socket.IO server; this list is just the contact roster shown in the UI.
 // ---------------------------------------------------------------------------
-
-export type ChatMessage = {
-  id: string;
-  from: "me" | "them";
-  text: string;
-  time: string;
-};
 
 export type Conversation = {
   id: string;
   name: string;
   username: string;
   online: boolean;
-  messages: ChatMessage[];
 };
 
 export const CONVERSATIONS: Conversation[] = [
-  {
-    id: "c1",
-    name: "Aisha Khan",
-    username: "@aisha",
-    online: true,
-    messages: [
-      { id: "m1", from: "them", text: "yo did you see the new reel drop?", time: "09:41" },
-      { id: "m2", from: "me", text: "not yet! link?", time: "09:42" },
-      { id: "m3", from: "them", text: "starting a watch party tonight, join?", time: "09:42" },
-    ],
-  },
-  {
-    id: "c2",
-    name: "Marco Silva",
-    username: "@marco",
-    online: true,
-    messages: [
-      { id: "m1", from: "me", text: "that stream yesterday was 🔥", time: "Yesterday" },
-      { id: "m2", from: "them", text: "right?? we should co-watch the finale", time: "Yesterday" },
-    ],
-  },
-  {
-    id: "c3",
-    name: "Priya Nair",
-    username: "@priya",
-    online: false,
-    messages: [
-      { id: "m1", from: "them", text: "sent you the playlist", time: "Mon" },
-      { id: "m2", from: "me", text: "got it, thanks!", time: "Mon" },
-    ],
-  },
-  {
-    id: "c4",
-    name: "Diego Torres",
-    username: "@diego",
-    online: false,
-    messages: [
-      { id: "m1", from: "them", text: "gg on the party earlier", time: "Sun" },
-    ],
-  },
-];
-
-// Canned replies so the demo chat feels alive without a backend.
-export const AUTO_REPLIES = [
-  "haha for real 😄",
-  "okay let's do it",
-  "sending the link now",
-  "brb grabbing snacks 🍿",
-  "that's wild",
-  "yeah I'm in!",
+  { id: "c1", name: "Aisha Khan", username: "@aisha", online: true },
+  { id: "c2", name: "Marco Silva", username: "@marco", online: true },
+  { id: "c3", name: "Priya Nair", username: "@priya", online: false },
+  { id: "c4", name: "Diego Torres", username: "@diego", online: false },
 ];
 
 // ---------------------------------------------------------------------------

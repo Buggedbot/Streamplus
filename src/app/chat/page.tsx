@@ -1,70 +1,92 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CONVERSATIONS,
-  AUTO_REPLIES,
-  type Conversation,
-  type ChatMessage,
-} from "@/lib/mock-data";
+import { CONVERSATIONS } from "@/lib/mock-data";
+import { useSocket } from "@/lib/useSocket";
+import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/Avatar";
 import { SendIcon, ArrowLeftIcon, CommentIcon } from "@/components/icons";
 
+type DM = {
+  id: string;
+  fromId: string;
+  name: string;
+  text: string;
+};
+
 export default function ChatPage() {
-  const [convos, setConvos] = useState<Conversation[]>(CONVERSATIONS);
+  const { socket: socketRef, connected } = useSocket();
+  const { user } = useAuth();
+
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<DM[]>([]);
+  const [myId, setMyId] = useState("");
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const active = useMemo(
-    () => convos.find((c) => c.id === activeId) ?? null,
-    [convos, activeId]
+  const [guestName] = useState(
+    () => `Guest-${Math.random().toString(36).slice(2, 6)}`
   );
+  const name = user?.name || guestName;
+  const nameRef = useRef(name);
+  useEffect(() => {
+    nameRef.current = name;
+  });
+
+  const active = useMemo(
+    () => CONVERSATIONS.find((c) => c.id === activeId) ?? null,
+    [activeId]
+  );
+
+  // Join the selected conversation channel and stream its messages.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!connected || !socket || !activeId) return;
+
+    const onHistory = (data: {
+      channelId: string;
+      messages: DM[];
+      youId?: string;
+    }) => {
+      if (data.channelId !== activeId) return;
+      if (data.youId) setMyId(data.youId);
+      setMessages(data.messages ?? []);
+    };
+    const onMessage = (m: DM & { channelId: string }) => {
+      if (m.channelId !== activeId) return;
+      setMessages((prev) => [...prev, m]);
+    };
+
+    socket.on("dm:history", onHistory);
+    socket.on("dm:message", onMessage);
+    socket.emit("dm:join", { channelId: activeId });
+
+    return () => {
+      socket.emit("dm:leave", { channelId: activeId });
+      socket.off("dm:history", onHistory);
+      socket.off("dm:message", onMessage);
+    };
+  }, [connected, activeId, socketRef]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [active?.messages.length, activeId]);
+  }, [messages.length, activeId]);
+
+  function openConversation(id: string) {
+    setActiveId(id);
+    setMessages([]);
+  }
 
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text || !activeId) return;
     setDraft("");
-
-    const mine: ChatMessage = {
-      id: `me-${Date.now()}`,
-      from: "me",
+    socketRef.current?.emit("dm:send", {
+      channelId: activeId,
       text,
-      time: "now",
-    };
-    setConvos((cs) =>
-      cs.map((c) =>
-        c.id === activeId ? { ...c, messages: [...c.messages, mine] } : c
-      )
-    );
-
-    // Canned auto-reply so the demo feels alive (replace with realtime later).
-    const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-    setTimeout(() => {
-      setConvos((cs) =>
-        cs.map((c) =>
-          c.id === activeId
-            ? {
-                ...c,
-                messages: [
-                  ...c.messages,
-                  {
-                    id: `them-${Date.now()}`,
-                    from: "them",
-                    text: reply,
-                    time: "now",
-                  },
-                ],
-              }
-            : c
-        )
-      );
-    }, 900);
+      name: nameRef.current,
+    });
   }
 
   return (
@@ -76,17 +98,23 @@ export default function ChatPage() {
             activeId ? "hidden sm:flex" : "flex"
           } w-full sm:w-80 shrink-0 flex-col border-r border-white/10`}
         >
-          <div className="px-4 h-14 flex items-center border-b border-white/10">
+          <div className="px-4 h-14 flex items-center justify-between border-b border-white/10">
             <h1 className="text-base font-semibold">Messages</h1>
+            <span
+              className={`text-xs ${
+                connected ? "text-emerald-400" : "text-white/40"
+              }`}
+            >
+              {connected ? "online" : "connecting…"}
+            </span>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {convos.map((c) => {
-              const last = c.messages[c.messages.length - 1];
+            {CONVERSATIONS.map((c) => {
               const activeRow = c.id === activeId;
               return (
                 <button
                   key={c.id}
-                  onClick={() => setActiveId(c.id)}
+                  onClick={() => openConversation(c.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                     activeRow ? "bg-white/10" : "hover:bg-white/5"
                   }`}
@@ -100,8 +128,7 @@ export default function ChatPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{c.name}</p>
                     <p className="truncate text-xs text-white/45">
-                      {last?.from === "me" ? "You: " : ""}
-                      {last?.text}
+                      {c.username}
                     </p>
                   </div>
                 </button>
@@ -131,9 +158,7 @@ export default function ChatPage() {
                   <p className="truncate text-sm font-medium leading-tight">
                     {active.name}
                   </p>
-                  <p className="text-xs text-white/45">
-                    {active.online ? "Active now" : "Offline"}
-                  </p>
+                  <p className="text-xs text-white/45">{active.username}</p>
                 </div>
               </div>
 
@@ -141,24 +166,37 @@ export default function ChatPage() {
                 ref={scrollRef}
                 className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-4 space-y-2"
               >
-                {active.messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${
-                      m.from === "me" ? "justify-end" : "justify-start"
-                    }`}
-                  >
+                {messages.length === 0 && (
+                  <p className="text-center text-xs text-white/35 pt-4">
+                    No messages yet — say hello 👋
+                  </p>
+                )}
+                {messages.map((m) => {
+                  const mine = m.fromId === myId;
+                  return (
                     <div
-                      className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                        m.from === "me"
-                          ? "bg-violet-600 text-white rounded-br-md"
-                          : "bg-white/10 text-white rounded-bl-md"
+                      key={m.id}
+                      className={`flex flex-col ${
+                        mine ? "items-end" : "items-start"
                       }`}
                     >
-                      {m.text}
+                      {!mine && (
+                        <span className="text-[11px] text-white/40 px-1">
+                          {m.name}
+                        </span>
+                      )}
+                      <div
+                        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
+                          mine
+                            ? "bg-violet-600 text-white rounded-br-md"
+                            : "bg-white/10 text-white rounded-bl-md"
+                        }`}
+                      >
+                        {m.text}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <form

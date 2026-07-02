@@ -7,6 +7,7 @@
 import { createServer } from "http";
 import next from "next";
 import { Server as SocketServer } from "socket.io";
+import { getMessages, addMessage } from "./store.mjs";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
@@ -14,19 +15,19 @@ const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev, turbopack: dev });
 const handle = app.getRequestHandler();
 
-// In-memory room state (ephemeral — resets on restart). A room holds its
-// current playback state and the last chunk of chat so late joiners catch up.
-/** @type {Map<string, { playback: { playing: boolean, time: number, at: number }, messages: any[] }>} */
-const rooms = new Map();
-const CHAT_HISTORY = 50;
+// Live playback state per party room is ephemeral (kept in memory); chat
+// history is durable via the file-backed store. Channel keys: `party:<id>`
+// for watch-party chat and `dm:<id>` for direct-message conversations.
+/** @type {Map<string, { playing: boolean, time: number, at: number }>} */
+const playbackByRoom = new Map();
 
-function getRoom(roomId) {
-  let room = rooms.get(roomId);
-  if (!room) {
-    room = { playback: { playing: true, time: 0, at: Date.now() }, messages: [] };
-    rooms.set(roomId, room);
+function getPlayback(roomId) {
+  let pb = playbackByRoom.get(roomId);
+  if (!pb) {
+    pb = { playing: true, time: 0, at: Date.now() };
+    playbackByRoom.set(roomId, pb);
   }
-  return room;
+  return pb;
 }
 
 function participantsOf(io, roomId) {
@@ -52,12 +53,10 @@ app.prepare().then(() => {
       socket.data.roomId = roomId;
       socket.join(roomId);
 
-      const room = getRoom(roomId);
-
-      // Catch the joiner up on current playback + recent chat.
+      // Catch the joiner up on current playback + persisted chat history.
       socket.emit("sync", {
-        playback: room.playback,
-        messages: room.messages,
+        playback: getPlayback(roomId),
+        messages: getMessages(`party:${roomId}`),
         you: { id: socket.id, name: socket.data.name },
       });
 
@@ -80,23 +79,49 @@ app.prepare().then(() => {
         text: String(text).slice(0, 2000),
         time: Date.now(),
       };
-      const room = getRoom(roomId);
-      room.messages.push(msg);
-      if (room.messages.length > CHAT_HISTORY) room.messages.shift();
+      addMessage(`party:${roomId}`, msg);
       io.to(roomId).emit("chat", msg);
+    });
+
+    // --- Direct messages (shared conversation channels) --------------------
+    socket.on("dm:join", ({ channelId }) => {
+      if (!channelId) return;
+      const room = `dm:${channelId}`;
+      socket.join(room);
+      socket.emit("dm:history", {
+        channelId,
+        messages: getMessages(room),
+        youId: socket.id,
+      });
+    });
+
+    socket.on("dm:leave", ({ channelId }) => {
+      if (channelId) socket.leave(`dm:${channelId}`);
+    });
+
+    socket.on("dm:send", ({ channelId, text, name }) => {
+      if (!channelId || !text) return;
+      const room = `dm:${channelId}`;
+      const msg = {
+        id: `${socket.id}-${Date.now()}`,
+        fromId: socket.id,
+        name: String(name || socket.data.name || "Guest").slice(0, 40),
+        text: String(text).slice(0, 2000),
+        time: Date.now(),
+      };
+      addMessage(room, msg);
+      io.to(room).emit("dm:message", { channelId, ...msg });
     });
 
     // Co-watch: broadcast playback changes to everyone else in the room.
     socket.on("playback", ({ playing, time }) => {
       const roomId = socket.data.roomId;
       if (!roomId) return;
-      const room = getRoom(roomId);
-      room.playback = {
-        playing: !!playing,
-        time: Number(time) || 0,
-        at: Date.now(),
-      };
-      socket.to(roomId).emit("playback", room.playback);
+      const pb = getPlayback(roomId);
+      pb.playing = !!playing;
+      pb.time = Number(time) || 0;
+      pb.at = Date.now();
+      socket.to(roomId).emit("playback", pb);
     });
 
     // WebRTC signaling relay (offers/answers/ICE candidates), targeted 1:1.
@@ -112,9 +137,9 @@ app.prepare().then(() => {
       socket.leave(roomId);
       // Emit presence after this socket has left.
       setTimeout(() => io.to(roomId).emit("presence", participantsOf(io, roomId)), 0);
-      // Drop empty rooms.
+      // Forget playback state for now-empty rooms.
       const set = io.sockets.adapter.rooms.get(roomId);
-      if (!set || set.size === 0) rooms.delete(roomId);
+      if (!set || set.size === 0) playbackByRoom.delete(roomId);
       socket.data.roomId = null;
     }
 
