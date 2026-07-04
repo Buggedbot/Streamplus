@@ -1,12 +1,21 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { REELS } from "@/lib/mock-data";
 import ReelCard from "@/components/ReelCard";
 
 export default function ReelsPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const wheelLockedRef = useRef(false);
+
+  // Deep-link support: /reels?reel=<id> jumps to that reel on load.
+  useEffect(() => {
+    const target = new URLSearchParams(window.location.search).get("reel");
+    if (!target) return;
+    const idx = REELS.findIndex((r) => r.id === target);
+    const el = containerRef.current;
+    if (idx > 0 && el) el.scrollTo({ top: idx * el.clientHeight });
+  }, []);
 
   const scrollByOne = useCallback((direction: 1 | -1) => {
     const el = containerRef.current;

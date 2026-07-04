@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Reel } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth";
+import { CommentsSheet, type Comment } from "@/components/CommentsSheet";
 import {
   PlayIcon,
   HeartIcon,
@@ -9,6 +12,7 @@ import {
   ShareIcon,
   MutedIcon,
   SoundIcon,
+  CheckIcon,
 } from "@/components/icons";
 
 function formatCount(n: number) {
@@ -20,9 +24,46 @@ function formatCount(n: number) {
 export default function ReelCard({ reel }: { reel: Reel }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewedRef = useRef(false);
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const videoId = `reel:${reel.id}`;
+
   const [muted, setMuted] = useState(true);
-  const [liked, setLiked] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeExtra, setLikeExtra] = useState(0); // real likes on top of the seed
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsExtra, setCommentsExtra] = useState(0);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  // Load real like state + comments for this reel.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/like?videoId=${encodeURIComponent(videoId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) {
+          setLiked(Boolean(d.liked));
+          setLikeExtra(d.count || 0);
+        }
+      })
+      .catch(() => {});
+    fetch(`/api/comments?videoId=${encodeURIComponent(videoId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) {
+          setComments(d.comments || []);
+          setCommentsExtra((d.comments || []).length);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [videoId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -34,6 +75,15 @@ export default function ReelCard({ reel }: { reel: Reel }) {
         if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
           video.play().catch(() => {});
           setPaused(false);
+          // Count a view the first time this reel becomes active.
+          if (!viewedRef.current) {
+            viewedRef.current = true;
+            fetch("/api/view", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoId }),
+            }).catch(() => {});
+          }
         } else {
           video.pause();
         }
@@ -42,7 +92,7 @@ export default function ReelCard({ reel }: { reel: Reel }) {
     );
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [videoId]);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -55,6 +105,70 @@ export default function ReelCard({ reel }: { reel: Reel }) {
       setPaused(true);
     }
   }
+
+  async function toggleLike() {
+    if (!user) {
+      router.push("/login?next=/reels");
+      return;
+    }
+    // Optimistic
+    setLiked((v) => !v);
+    setLikeExtra((n) => n + (liked ? -1 : 1));
+    try {
+      const r = await fetch("/api/like", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId }),
+      });
+      const d = await r.json();
+      if (typeof d.count === "number") {
+        setLiked(Boolean(d.liked));
+        setLikeExtra(d.count);
+      }
+    } catch {
+      // revert on failure
+      setLiked((v) => !v);
+    }
+  }
+
+  async function postComment(text: string) {
+    if (!user) {
+      router.push("/login?next=/reels");
+      return;
+    }
+    try {
+      const r = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, text }),
+      });
+      const d = await r.json();
+      if (d.comment) {
+        setComments((c) => [...c, d.comment]);
+        setCommentsExtra((n) => n + 1);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function share() {
+    const url = `${window.location.origin}/reels?reel=${reel.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: reel.caption, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setTimeout(() => setShared(false), 1800);
+      }
+    } catch {
+      // user cancelled share; ignore
+    }
+  }
+
+  const likeCount = reel.likes + likeExtra;
+  const commentCount = reel.comments + commentsExtra;
 
   return (
     <div
@@ -105,7 +219,7 @@ export default function ReelCard({ reel }: { reel: Reel }) {
         {/* Right-side action rail */}
         <div className="absolute right-3 bottom-24 sm:bottom-6 flex flex-col items-center gap-6 text-white">
           <button
-            onClick={() => setLiked((l) => !l)}
+            onClick={toggleLike}
             className="flex flex-col items-center gap-1.5 transition-transform active:scale-90"
             aria-pressed={liked}
             aria-label="Like"
@@ -116,25 +230,31 @@ export default function ReelCard({ reel }: { reel: Reel }) {
               filled={liked}
               className={liked ? "text-red-500" : "text-white"}
             />
-            <span className="text-xs font-medium">
-              {formatCount(reel.likes + (liked ? 1 : 0))}
-            </span>
+            <span className="text-xs font-medium">{formatCount(likeCount)}</span>
           </button>
           <button
+            onClick={() => setCommentsOpen(true)}
             className="flex flex-col items-center gap-1.5 transition-transform active:scale-90"
             aria-label="Comments"
           >
             <CommentIcon width={30} height={30} />
             <span className="text-xs font-medium">
-              {formatCount(reel.comments)}
+              {formatCount(commentCount)}
             </span>
           </button>
           <button
+            onClick={share}
             className="flex flex-col items-center gap-1.5 transition-transform active:scale-90"
             aria-label="Share"
           >
-            <ShareIcon width={28} height={28} />
-            <span className="text-xs font-medium">Share</span>
+            {shared ? (
+              <CheckIcon width={28} height={28} className="text-emerald-400" />
+            ) : (
+              <ShareIcon width={28} height={28} />
+            )}
+            <span className="text-xs font-medium">
+              {shared ? "Copied" : "Share"}
+            </span>
           </button>
         </div>
 
@@ -145,6 +265,13 @@ export default function ReelCard({ reel }: { reel: Reel }) {
             {reel.caption}
           </p>
         </div>
+
+        <CommentsSheet
+          open={commentsOpen}
+          comments={comments}
+          onClose={() => setCommentsOpen(false)}
+          onPost={postComment}
+        />
       </div>
     </div>
   );
