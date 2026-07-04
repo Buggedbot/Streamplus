@@ -19,6 +19,7 @@ const empty = () => ({
   likes: {}, // videoId -> { userId: true }
   views: {}, // videoId -> count
   uploads: [], // upload metadata (newest last)
+  reports: [], // moderation reports (newest last)
 });
 
 /** @type {ReturnType<typeof empty>} */
@@ -277,4 +278,35 @@ export function addUpload(meta) {
 
 export function listUploads() {
   return [...db.uploads].reverse();
+}
+
+// --- Moderation reports ----------------------------------------------------
+
+export function addReport({ videoId, caption, reason, reporterId, reporterName }) {
+  const report = {
+    id: id("r"),
+    videoId,
+    caption: String(caption || "").slice(0, 200),
+    reason: String(reason || "Other").slice(0, 60),
+    reporterId,
+    reporterName,
+    at: Date.now(),
+    status: "pending",
+  };
+  db.reports.push(report);
+  if (db.reports.length > 500) db.reports.shift();
+  persist();
+  return report;
+}
+
+export function listReports() {
+  return [...db.reports].reverse();
+}
+
+export function updateReport(reportId, status) {
+  const r = db.reports.find((x) => x.id === reportId);
+  if (!r) return null;
+  r.status = status === "resolved" || status === "dismissed" ? status : r.status;
+  persist();
+  return r;
 }

@@ -1,13 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { REPORTS, type Report } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+
+type Report = {
+  id: string;
+  videoId: string;
+  caption: string;
+  reason: string;
+  reporterName: string;
+  at: number;
+  status: "pending" | "resolved" | "dismissed";
+};
+
+function when(ts: number) {
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export default function AdminModeration() {
-  const [reports, setReports] = useState<Report[]>(REPORTS);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function act(id: string, status: "resolved" | "dismissed") {
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/admin/reports")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) {
+          setReports(d.reports ?? []);
+          setLoading(false);
+        }
+      })
+      .catch(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function act(id: string, status: "resolved" | "dismissed") {
     setReports((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
+    await fetch("/api/admin/reports/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: id, status }),
+    }).catch(() => {});
   }
 
   const pending = reports.filter((r) => r.status === "pending");
@@ -19,13 +57,17 @@ export default function AdminModeration() {
         <div>
           <h1 className="text-xl font-semibold">Moderation</h1>
           <p className="text-sm text-white/50 mt-1">
-            Review reported content and take action.
+            Real reports from viewers. Review and take action.
           </p>
         </div>
         <span className="text-sm text-white/40">{pending.length} pending</span>
       </div>
 
-      {pending.length === 0 ? (
+      {loading ? (
+        <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/40">
+          Loading…
+        </div>
+      ) : pending.length === 0 ? (
         <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/40">
           All caught up — no pending reports.
         </div>
@@ -41,10 +83,10 @@ export default function AdminModeration() {
                   {r.reason}
                 </span>
                 <span className="text-xs text-white/40">
-                  reported {r.createdAt} by {r.reportedBy}
+                  reported {when(r.at)} by {r.reporterName} · {r.videoId}
                 </span>
               </div>
-              <p className="mt-3 text-sm font-medium">{r.reelCaption}</p>
+              <p className="mt-3 text-sm font-medium">{r.caption || r.videoId}</p>
               <div className="mt-4 flex gap-2">
                 <button
                   onClick={() => act(r.id, "resolved")}
@@ -84,7 +126,9 @@ export default function AdminModeration() {
                 >
                   {r.status === "resolved" ? "Removed" : "Dismissed"}
                 </span>
-                <span className="truncate text-white/60">{r.reelCaption}</span>
+                <span className="truncate text-white/60">
+                  {r.caption || r.videoId}
+                </span>
               </div>
             ))}
           </div>

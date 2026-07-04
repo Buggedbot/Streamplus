@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Reel } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
 import { CommentsSheet, type Comment } from "@/components/CommentsSheet";
+import { ReportSheet } from "@/components/ReportSheet";
 import {
   PlayIcon,
   HeartIcon,
@@ -13,6 +14,7 @@ import {
   MutedIcon,
   SoundIcon,
   CheckIcon,
+  FlagIcon,
 } from "@/components/icons";
 
 function formatCount(n: number) {
@@ -38,6 +40,8 @@ export default function ReelCard({ reel }: { reel: Reel }) {
   const [commentsExtra, setCommentsExtra] = useState(0);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [shared, setShared] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reported, setReported] = useState(false);
 
   // Load real like state + comments for this reel.
   useEffect(() => {
@@ -152,6 +156,29 @@ export default function ReelCard({ reel }: { reel: Reel }) {
     }
   }
 
+  function openReport() {
+    if (!user) {
+      router.push("/login?next=/reels");
+      return;
+    }
+    setReportOpen(true);
+  }
+
+  async function submitReport(reason: string) {
+    setReportOpen(false);
+    setReported(true);
+    setTimeout(() => setReported(false), 2200);
+    try {
+      await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, reason, caption: reel.caption }),
+      });
+    } catch {
+      // ignore
+    }
+  }
+
   async function share() {
     const url = `${window.location.origin}/reels?reel=${reel.id}`;
     try {
@@ -256,6 +283,20 @@ export default function ReelCard({ reel }: { reel: Reel }) {
               {shared ? "Copied" : "Share"}
             </span>
           </button>
+          <button
+            onClick={openReport}
+            className="flex flex-col items-center gap-1.5 transition-transform active:scale-90 text-white/80"
+            aria-label="Report"
+          >
+            {reported ? (
+              <CheckIcon width={26} height={26} className="text-emerald-400" />
+            ) : (
+              <FlagIcon width={26} height={26} />
+            )}
+            <span className="text-xs font-medium">
+              {reported ? "Sent" : "Report"}
+            </span>
+          </button>
         </div>
 
         {/* Bottom info */}
@@ -271,6 +312,11 @@ export default function ReelCard({ reel }: { reel: Reel }) {
           comments={comments}
           onClose={() => setCommentsOpen(false)}
           onPost={postComment}
+        />
+        <ReportSheet
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+          onPick={submitReport}
         />
       </div>
     </div>

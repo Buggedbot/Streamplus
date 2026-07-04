@@ -67,26 +67,6 @@ export const TRENDING = REELS.map((r) => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Admin dashboard seed data (analytics + moderation still use sample data).
-// ---------------------------------------------------------------------------
-
-export type Report = {
-  id: string;
-  reelId: string;
-  reelCaption: string;
-  reason: string;
-  reportedBy: string;
-  createdAt: string;
-  status: "pending" | "resolved" | "dismissed";
-};
-
-export const REPORTS: Report[] = [
-  { id: "r_1", reelId: "3", reelCaption: "Sample reel #3 — swap me for real content", reason: "Spam / misleading", reportedBy: "aisha@example.com", createdAt: "2026-06-28", status: "pending" },
-  { id: "r_2", reelId: "1", reelCaption: "Sample reel #1 — swap me for real content", reason: "Copyright", reportedBy: "marco@example.com", createdAt: "2026-06-29", status: "pending" },
-  { id: "r_3", reelId: "5", reelCaption: "Sample reel #5 — swap me for real content", reason: "Inappropriate content", reportedBy: "diego@example.com", createdAt: "2026-06-30", status: "pending" },
-];
-
-// ---------------------------------------------------------------------------
 // Chat directory. Conversations are shared realtime channels backed by the
 // Socket.IO server; this list is just the contact roster shown in the UI.
 // ---------------------------------------------------------------------------

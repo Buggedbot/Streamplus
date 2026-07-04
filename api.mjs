@@ -185,6 +185,36 @@ export async function handleApi(req, res) {
       return json(res, 200, store.toggleLike(videoId, me.id)), true;
     }
 
+    // --- Reports (moderation) ---
+    if (path === "/api/report" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in to report." }), true;
+      const { videoId, reason, caption } = await readBody(req);
+      if (!videoId) return json(res, 400, { error: "Missing video." }), true;
+      store.addReport({
+        videoId,
+        caption,
+        reason,
+        reporterId: me.id,
+        reporterName: me.name,
+      });
+      return json(res, 200, { ok: true }), true;
+    }
+
+    if (path === "/api/admin/reports" && method === "GET") {
+      const me = currentUser(req);
+      if (!me || me.role !== "admin") return json(res, 403, { error: "Forbidden" }), true;
+      return json(res, 200, { reports: store.listReports() }), true;
+    }
+
+    if (path === "/api/admin/reports/update" && method === "POST") {
+      const me = currentUser(req);
+      if (!me || me.role !== "admin") return json(res, 403, { error: "Forbidden" }), true;
+      const { reportId, status } = await readBody(req);
+      const updated = store.updateReport(reportId, status);
+      return json(res, 200, { report: updated }), true;
+    }
+
     // --- Views ---
     if (path === "/api/view" && method === "POST") {
       const { videoId } = await readBody(req);
