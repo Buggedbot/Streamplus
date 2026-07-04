@@ -53,6 +53,11 @@ function currentUser(req) {
   return store.getSessionUser(token);
 }
 
+// Shared with the custom server so the streamed upload handler can auth.
+export function userFromRequest(req) {
+  return currentUser(req);
+}
+
 // Returns true if the request was handled here.
 export async function handleApi(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -135,6 +140,14 @@ export async function handleApi(req, res) {
       const { targetId, on } = await readBody(req);
       store.setFollow(me.id, targetId, !!on);
       return json(res, 200, { counts: store.followCounts(targetId), isFollowing: !!on }), true;
+    }
+
+    // --- Uploads (metadata list; the file itself is streamed by the server) ---
+    if (path === "/api/uploads" && method === "GET") {
+      const owner = url.searchParams.get("owner");
+      let uploads = store.listUploads();
+      if (owner) uploads = uploads.filter((u) => u.ownerId === owner);
+      return json(res, 200, { uploads }), true;
     }
 
     // --- Comments ---

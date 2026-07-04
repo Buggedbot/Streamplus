@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/Avatar";
-import { UsersIcon } from "@/components/icons";
+import { UsersIcon, PlayIcon } from "@/components/icons";
+
+type Upload = { id: string; title: string; ownerId: string; src: string };
 
 type Profile = {
   user: { id: string; name: string; email: string; bio?: string; role: string };
@@ -23,6 +25,7 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [uploads, setUploads] = useState<Upload[]>([]);
 
   const isSelf = me?.id === id;
 
@@ -40,6 +43,10 @@ export default function ProfilePage() {
         setLoading(false);
       })
       .catch(() => alive && setLoading(false));
+    fetch(`/api/uploads?owner=${id}`)
+      .then((r) => r.json())
+      .then((d) => alive && setUploads(d.uploads ?? []))
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -170,15 +177,57 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="mt-8 border-t border-white/10 pt-8 flex flex-col items-center gap-2 text-center text-white/40">
-        <UsersIcon width={28} height={28} />
-        <p className="text-sm">Uploads will appear here.</p>
-        <Link
-          href="/people"
-          className="mt-2 text-sm text-violet-400 hover:text-violet-300"
-        >
-          Find more people →
-        </Link>
+      <div className="mt-8 border-t border-white/10 pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-white/80">Uploads</h2>
+          {isSelf && (
+            <Link
+              href="/upload"
+              className="text-xs text-violet-400 hover:text-violet-300"
+            >
+              + Upload
+            </Link>
+          )}
+        </div>
+
+        {uploads.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 text-center text-white/40 py-8">
+            <UsersIcon width={28} height={28} />
+            <p className="text-sm">No uploads yet.</p>
+            <Link
+              href="/people"
+              className="mt-1 text-sm text-violet-400 hover:text-violet-300"
+            >
+              Find more people →
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {uploads.map((u) => (
+              <Link
+                key={u.id}
+                href={`/?v=${encodeURIComponent(u.src)}`}
+                className="group"
+              >
+                <div className="relative aspect-video rounded-lg overflow-hidden bg-black border border-white/10 group-hover:border-white/25 transition-colors mb-1.5">
+                  <video
+                    src={u.src}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition-colors">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-black scale-90 group-hover:scale-100 transition-transform">
+                      <PlayIcon width={16} height={16} className="translate-x-0.5" />
+                    </span>
+                  </span>
+                </div>
+                <p className="text-xs font-medium line-clamp-1">{u.title}</p>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

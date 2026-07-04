@@ -42,6 +42,9 @@ yarn-error.log*
 # runtime message store
 .data/
 
+# user-uploaded videos
+/public/uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

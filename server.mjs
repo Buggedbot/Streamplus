@@ -5,10 +5,130 @@
 // NOTE: server.mjs does not run through the Next.js compiler — keep it plain
 // Node ESM.
 import { createServer } from "http";
+import { createWriteStream, createReadStream, mkdirSync, existsSync, statSync } from "fs";
+import { join, normalize } from "path";
 import next from "next";
 import { Server as SocketServer } from "socket.io";
-import { getMessages, addMessage } from "./store.mjs";
-import { handleApi } from "./api.mjs";
+import { getMessages, addMessage, addUpload } from "./store.mjs";
+import { handleApi, userFromRequest } from "./api.mjs";
+
+const UPLOAD_DIR = join(process.cwd(), "public", "uploads");
+const MAX_UPLOAD = 200 * 1024 * 1024; // 200 MB
+const EXT_BY_MIME = {
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/ogg": "ogv",
+  "video/quicktime": "mov",
+};
+const MIME_BY_EXT = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  ogv: "video/ogg",
+  mov: "video/quicktime",
+};
+
+// Serves uploaded videos with HTTP range support so seeking works. Next.js
+// doesn't serve files added to /public after build, so we stream them here.
+function serveUpload(req, res) {
+  const name = normalize(decodeURIComponent(req.url.slice("/uploads/".length)));
+  if (name.includes("..") || name.includes("/") || name.includes("\\")) {
+    res.writeHead(400);
+    res.end();
+    return;
+  }
+  const filePath = join(UPLOAD_DIR, name);
+  if (!existsSync(filePath)) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  const ext = name.split(".").pop();
+  const type = MIME_BY_EXT[ext] || "application/octet-stream";
+  const { size } = statSync(filePath);
+  const range = req.headers.range;
+
+  if (range) {
+    const m = /bytes=(\d*)-(\d*)/.exec(range);
+    const start = m && m[1] ? parseInt(m[1], 10) : 0;
+    const end = m && m[2] ? parseInt(m[2], 10) : size - 1;
+    if (start >= size || end >= size) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` });
+      res.end();
+      return;
+    }
+    res.writeHead(206, {
+      "Content-Type": type,
+      "Content-Range": `bytes ${start}-${end}/${size}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": end - start + 1,
+    });
+    createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      "Content-Type": type,
+      "Content-Length": size,
+      "Accept-Ranges": "bytes",
+    });
+    createReadStream(filePath).pipe(res);
+  }
+}
+
+// Streams an uploaded video to public/uploads (served statically by Next) and
+// records its metadata. Auth-gated; capped in size.
+function handleUpload(req, res) {
+  const user = userFromRequest(req);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Sign in to upload." }));
+    return;
+  }
+  const mime = (req.headers["content-type"] || "").split(";")[0];
+  const ext = EXT_BY_MIME[mime];
+  if (!ext) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unsupported video type." }));
+    return;
+  }
+  const title =
+    decodeURIComponent(String(req.headers["x-title"] || "")).slice(0, 120) ||
+    "Untitled";
+
+  if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
+  const fileId = `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const filename = `${fileId}.${ext}`;
+  const out = createWriteStream(join(UPLOAD_DIR, filename));
+
+  let size = 0;
+  let aborted = false;
+  req.on("data", (chunk) => {
+    size += chunk.length;
+    if (size > MAX_UPLOAD && !aborted) {
+      aborted = true;
+      req.destroy();
+      out.destroy();
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "File too large (max 200MB)." }));
+    }
+  });
+  req.pipe(out);
+  out.on("finish", () => {
+    if (aborted) return;
+    const upload = addUpload({
+      title,
+      ownerId: user.id,
+      ownerName: user.name,
+      src: `/uploads/${filename}`,
+      mime,
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ upload }));
+  });
+  out.on("error", () => {
+    if (aborted) return;
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Upload failed." }));
+  });
+}
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
@@ -42,6 +162,16 @@ function participantsOf(io, roomId) {
 
 app.prepare().then(() => {
   const httpServer = createServer(async (req, res) => {
+    // Streamed file upload (binary body — bypasses the JSON API).
+    if (req.url === "/api/upload" && req.method === "POST") {
+      handleUpload(req, res);
+      return;
+    }
+    // Serve uploaded videos with range support.
+    if (req.url && req.url.startsWith("/uploads/")) {
+      serveUpload(req, res);
+      return;
+    }
     // JSON API routes are served directly; everything else goes to Next.
     if (req.url && req.url.startsWith("/api/") && !req.url.startsWith("/api/socket")) {
       const handled = await handleApi(req, res);

@@ -1,19 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { TRENDING } from "@/lib/mock-data";
-import { LinkIcon, DownloadIcon, PlayIcon } from "@/components/icons";
+import { useAuth } from "@/lib/auth";
+import { LinkIcon, DownloadIcon, PlayIcon, PlusIcon } from "@/components/icons";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
 const DIRECT_FILE_RE = /\.(mp4|webm|ogg|mov|m3u8)(\?.*)?$/i;
 
-export default function WatchPage() {
+type Upload = {
+  id: string;
+  title: string;
+  ownerId: string;
+  ownerName: string;
+  src: string;
+};
+
+function WatchInner() {
+  const params = useSearchParams();
+  const { user } = useAuth();
+  const initialV = params.get("v");
+
   const [urlInput, setUrlInput] = useState("");
-  const [activeUrl, setActiveUrl] = useState<string>(TRENDING[0].src);
-  const [activeTitle, setActiveTitle] = useState<string>(TRENDING[0].title);
+  const [activeUrl, setActiveUrl] = useState<string>(initialV || TRENDING[0].src);
+  const [activeTitle, setActiveTitle] = useState<string>(
+    initialV ? "Your video" : TRENDING[0].title
+  );
   const [error, setError] = useState("");
+  const [uploads, setUploads] = useState<Upload[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/uploads")
+      .then((r) => r.json())
+      .then((d) => alive && setUploads(d.uploads ?? []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   function play(url: string, title: string) {
     setActiveUrl(url);
@@ -95,6 +124,76 @@ export default function WatchPage() {
         </div>
       </div>
 
+      {/* Latest uploads */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-white/90">
+            Latest uploads
+          </h2>
+          <Link
+            href={user ? "/upload" : "/login?next=/upload"}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-medium transition-colors"
+          >
+            <PlusIcon width={15} height={15} />
+            Upload
+          </Link>
+        </div>
+        {uploads.length === 0 ? (
+          <p className="text-sm text-white/40 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-8 text-center">
+            No uploads yet.{" "}
+            <Link
+              href={user ? "/upload" : "/login?next=/upload"}
+              className="text-violet-400 hover:text-violet-300"
+            >
+              Be the first →
+            </Link>
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5">
+            {uploads.map((item) => {
+              const active = item.src === activeUrl;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => play(item.src, item.title)}
+                  className="text-left group focus:outline-none"
+                >
+                  <div
+                    className={`relative aspect-video rounded-xl overflow-hidden bg-black border mb-2 transition-colors ${
+                      active
+                        ? "border-violet-500"
+                        : "border-white/10 group-hover:border-white/25"
+                    }`}
+                  >
+                    <video
+                      src={item.src}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition-colors">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black scale-90 group-hover:scale-100 transition-transform">
+                        <PlayIcon width={18} height={18} className="translate-x-0.5" />
+                      </span>
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium line-clamp-1 text-white/90">
+                    {item.title}
+                  </p>
+                  <Link
+                    href={`/u/${item.ownerId}`}
+                    className="text-xs text-white/40 mt-0.5 hover:text-white/70"
+                  >
+                    {item.ownerName}
+                  </Link>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Trending */}
       <section>
         <h2 className="text-base font-semibold mb-4 text-white/90">Trending</h2>
@@ -136,5 +235,19 @@ export default function WatchPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function WatchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex items-center justify-center text-sm text-white/40">
+          Loading…
+        </div>
+      }
+    >
+      <WatchInner />
+    </Suspense>
   );
 }
