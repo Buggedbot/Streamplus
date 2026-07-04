@@ -95,6 +95,28 @@ export async function handleApi(req, res) {
     }
 
     // --- Profiles & follows ---
+    if (path === "/api/people" && method === "GET") {
+      const me = currentUser(req);
+      const people = store
+        .listUsers()
+        .filter((u) => !me || u.id !== me.id)
+        .map((u) => ({
+          ...u,
+          counts: store.followCounts(u.id),
+          isFollowing: me ? store.isFollowing(me.id, u.id) : false,
+        }))
+        .slice(0, 50);
+      return json(res, 200, { people }), true;
+    }
+
+    if (path === "/api/profile" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in first." }), true;
+      const { name, bio } = await readBody(req);
+      const updated = store.updateUser(me.id, { name, bio });
+      return json(res, 200, { user: updated }), true;
+    }
+
     if (path.startsWith("/api/users/") && method === "GET") {
       const targetId = path.slice("/api/users/".length);
       const target = store.getUser(targetId);

@@ -69,7 +69,7 @@ export default function Navbar() {
           )}
 
           {user ? (
-            <Link href="/admin" className="ml-1 flex items-center gap-2">
+            <Link href={`/u/${user.id}`} className="ml-1 flex items-center gap-2">
               <Avatar name={user.name} size={32} className="ring-1 ring-white/15" />
             </Link>
           ) : (
@@ -101,9 +101,9 @@ export default function Navbar() {
           );
         })}
         <Link
-          href={user ? "/admin" : "/login"}
+          href={user ? `/u/${user.id}` : "/login"}
           className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
-            isActive(pathname, "/admin") || isActive(pathname, "/login")
+            isActive(pathname, "/u/") || isActive(pathname, "/login")
               ? "text-white"
               : "text-white/45"
           }`}
