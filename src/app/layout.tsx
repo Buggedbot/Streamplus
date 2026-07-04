@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AppShell from "@/components/AppShell";
+import PwaRegister from "@/components/PwaRegister";
 import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
@@ -17,6 +18,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "StreamPlus",
   description: "Watch videos from any link and swipe through reels.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "StreamPlus", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({
@@ -33,6 +44,7 @@ export default function RootLayout({
         <AuthProvider>
           <AppShell>{children}</AppShell>
         </AuthProvider>
+        <PwaRegister />
       </body>
     </html>
   );
