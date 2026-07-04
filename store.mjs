@@ -1,46 +1,280 @@
-// Tiny file-backed message store so chat history (DMs + party rooms) survives
-// server restarts. Deliberately dependency-free (no native modules to build):
-// messages live in memory and are flushed to a JSON file on a short debounce.
+// File-backed data store for StreamPlus. Deliberately dependency-free (no
+// native modules): everything lives in memory and is flushed to a JSON file on
+// a short debounce. Fine for a single-node app; swap for Postgres to scale.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 
 const DATA_DIR = join(process.cwd(), ".data");
-const FILE = join(DATA_DIR, "messages.json");
-const MAX_PER_CHANNEL = 200; // cap stored history per channel
-const RETURN_LIMIT = 100; // how many recent messages we hand back
+const FILE = join(DATA_DIR, "db.json");
+const MAX_PER_CHANNEL = 200;
+const RETURN_LIMIT = 100;
 
-/** @type {Record<string, any[]>} */
-let data = {};
+const empty = () => ({
+  messages: {}, // channelId -> message[]
+  users: {}, // userId -> user (with passwordHash)
+  sessions: {}, // token -> { userId, at }
+  comments: {}, // videoId -> comment[]
+  follows: {}, // followerId -> { targetId: true }
+  likes: {}, // videoId -> { userId: true }
+  views: {}, // videoId -> count
+  uploads: [], // upload metadata (newest last)
+});
+
+/** @type {ReturnType<typeof empty>} */
+let db = empty();
 try {
-  if (existsSync(FILE)) data = JSON.parse(readFileSync(FILE, "utf8")) || {};
+  if (existsSync(FILE)) db = { ...empty(), ...JSON.parse(readFileSync(FILE, "utf8")) };
 } catch {
-  data = {};
+  db = empty();
 }
 
 let writeTimer = null;
-function scheduleWrite() {
+function persist() {
   if (writeTimer) return;
   writeTimer = setTimeout(() => {
     writeTimer = null;
     try {
       if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-      writeFileSync(FILE, JSON.stringify(data));
+      writeFileSync(FILE, JSON.stringify(db));
     } catch {
-      // best-effort persistence; ignore disk errors
+      // best-effort persistence
     }
   }, 400);
 }
 
+function id(prefix) {
+  return `${prefix}_${randomBytes(9).toString("base64url")}`;
+}
+
+// --- Chat messages ---------------------------------------------------------
+
 export function getMessages(channelId) {
-  const list = data[channelId];
+  const list = db.messages[channelId];
   return list ? list.slice(-RETURN_LIMIT) : [];
 }
 
 export function addMessage(channelId, msg) {
-  const list = data[channelId] || (data[channelId] = []);
+  const list = db.messages[channelId] || (db.messages[channelId] = []);
   list.push(msg);
-  if (list.length > MAX_PER_CHANNEL) {
-    list.splice(0, list.length - MAX_PER_CHANNEL);
+  if (list.length > MAX_PER_CHANNEL) list.splice(0, list.length - MAX_PER_CHANNEL);
+  persist();
+}
+
+// --- Users & auth ----------------------------------------------------------
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const check = scryptSync(password, salt, 64).toString("hex");
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(check, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Public shape (never leak passwordHash).
+export function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    bio: u.bio || "",
+    createdAt: u.createdAt,
+  };
+}
+
+export function findUserByEmail(email) {
+  const target = String(email || "").toLowerCase();
+  return Object.values(db.users).find((u) => u.email.toLowerCase() === target) || null;
+}
+
+export function getUser(userId) {
+  return db.users[userId] || null;
+}
+
+export function listUsers() {
+  return Object.values(db.users).map(publicUser);
+}
+
+export function createUser({ name, email, password, role = "viewer" }) {
+  if (findUserByEmail(email)) return { error: "Email already registered." };
+  const cleanName = String(name || "").trim().slice(0, 40) || "User";
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+    return { error: "Enter a valid email." };
   }
-  scheduleWrite();
+  if (!password || String(password).length < 6) {
+    return { error: "Password must be at least 6 characters." };
+  }
+  const user = {
+    id: id("u"),
+    name: cleanName,
+    email: cleanEmail,
+    passwordHash: hashPassword(String(password)),
+    role,
+    bio: "",
+    createdAt: Date.now(),
+  };
+  db.users[user.id] = user;
+  persist();
+  return { user };
+}
+
+export function authenticate(email, password) {
+  const user = findUserByEmail(email);
+  if (!user || !verifyPassword(String(password), user.passwordHash)) {
+    return { error: "Incorrect email or password." };
+  }
+  return { user };
+}
+
+// A convenient always-admin demo account (the "Continue with Google" button).
+export function demoUser() {
+  let user = findUserByEmail("demo@streamplus.app");
+  if (!user) {
+    user = {
+      id: id("u"),
+      name: "Demo Admin",
+      email: "demo@streamplus.app",
+      passwordHash: hashPassword(randomBytes(12).toString("hex")),
+      role: "admin",
+      bio: "Exploring StreamPlus.",
+      createdAt: Date.now(),
+    };
+    db.users[user.id] = user;
+    persist();
+  }
+  return user;
+}
+
+export function updateUser(userId, patch) {
+  const u = db.users[userId];
+  if (!u) return null;
+  if (typeof patch.name === "string") u.name = patch.name.trim().slice(0, 40) || u.name;
+  if (typeof patch.bio === "string") u.bio = patch.bio.slice(0, 300);
+  if (patch.role === "admin" || patch.role === "viewer") u.role = patch.role;
+  persist();
+  return publicUser(u);
+}
+
+// --- Sessions --------------------------------------------------------------
+
+export function createSession(userId) {
+  const token = randomBytes(24).toString("base64url");
+  db.sessions[token] = { userId, at: Date.now() };
+  persist();
+  return token;
+}
+
+export function getSessionUser(token) {
+  const s = token && db.sessions[token];
+  if (!s) return null;
+  return db.users[s.userId] || null;
+}
+
+export function deleteSession(token) {
+  if (token && db.sessions[token]) {
+    delete db.sessions[token];
+    persist();
+  }
+}
+
+// --- Comments --------------------------------------------------------------
+
+export function getComments(videoId) {
+  return (db.comments[videoId] || []).slice(-RETURN_LIMIT);
+}
+
+export function addComment(videoId, { userId, name, text }) {
+  const list = db.comments[videoId] || (db.comments[videoId] = []);
+  const comment = {
+    id: id("c"),
+    userId,
+    name,
+    text: String(text).slice(0, 1000),
+    at: Date.now(),
+  };
+  list.push(comment);
+  if (list.length > MAX_PER_CHANNEL) list.splice(0, list.length - MAX_PER_CHANNEL);
+  persist();
+  return comment;
+}
+
+// --- Follows ---------------------------------------------------------------
+
+export function setFollow(followerId, targetId, on) {
+  if (!followerId || !targetId || followerId === targetId) return;
+  const set = db.follows[followerId] || (db.follows[followerId] = {});
+  if (on) set[targetId] = true;
+  else delete set[targetId];
+  persist();
+}
+
+export function isFollowing(followerId, targetId) {
+  return Boolean(db.follows[followerId]?.[targetId]);
+}
+
+export function followCounts(userId) {
+  const following = Object.keys(db.follows[userId] || {}).length;
+  let followers = 0;
+  for (const set of Object.values(db.follows)) if (set[userId]) followers++;
+  return { following, followers };
+}
+
+export function getFollowing(userId) {
+  return Object.keys(db.follows[userId] || {});
+}
+
+// --- Likes -----------------------------------------------------------------
+
+export function toggleLike(videoId, userId) {
+  const set = db.likes[videoId] || (db.likes[videoId] = {});
+  let liked;
+  if (set[userId]) {
+    delete set[userId];
+    liked = false;
+  } else {
+    set[userId] = true;
+    liked = true;
+  }
+  persist();
+  return { liked, count: Object.keys(set).length };
+}
+
+export function likeState(videoId, userId) {
+  const set = db.likes[videoId] || {};
+  return { liked: Boolean(userId && set[userId]), count: Object.keys(set).length };
+}
+
+// --- Views -----------------------------------------------------------------
+
+export function addView(videoId) {
+  db.views[videoId] = (db.views[videoId] || 0) + 1;
+  persist();
+  return db.views[videoId];
+}
+
+export function getViews(videoId) {
+  return db.views[videoId] || 0;
+}
+
+// --- Uploads ---------------------------------------------------------------
+
+export function addUpload(meta) {
+  const upload = { id: id("v"), at: Date.now(), ...meta };
+  db.uploads.push(upload);
+  persist();
+  return upload;
+}
+
+export function listUploads() {
+  return [...db.uploads].reverse();
 }

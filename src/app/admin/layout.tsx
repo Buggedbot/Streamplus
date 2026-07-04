@@ -59,8 +59,8 @@ export default function AdminLayout({
     );
   }
 
-  function handleSignOut() {
-    signOut();
+  async function handleSignOut() {
+    await signOut();
     router.replace("/");
   }
 

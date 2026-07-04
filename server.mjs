@@ -8,6 +8,7 @@ import { createServer } from "http";
 import next from "next";
 import { Server as SocketServer } from "socket.io";
 import { getMessages, addMessage } from "./store.mjs";
+import { handleApi } from "./api.mjs";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
@@ -40,7 +41,14 @@ function participantsOf(io, roomId) {
 }
 
 app.prepare().then(() => {
-  const httpServer = createServer((req, res) => handle(req, res));
+  const httpServer = createServer(async (req, res) => {
+    // JSON API routes are served directly; everything else goes to Next.
+    if (req.url && req.url.startsWith("/api/") && !req.url.startsWith("/api/socket")) {
+      const handled = await handleApi(req, res);
+      if (handled) return;
+    }
+    handle(req, res);
+  });
   const io = new SocketServer(httpServer, {
     cors: { origin: true },
     path: "/api/socket",

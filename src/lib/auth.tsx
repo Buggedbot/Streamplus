@@ -1,6 +1,12 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type Role = "admin" | "viewer";
 
@@ -8,96 +14,103 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  avatar: string;
   role: Role;
+  bio?: string;
+  createdAt?: number;
 };
 
-const STORAGE_KEY = "streamplus.user";
+type AuthResult = { error?: string };
 
-// NOTE: This is a mock auth layer that persists a fake session in
-// localStorage so the login flow and protected admin routes are fully
-// clickable with no backend. To go live, replace signInWithGoogle with a
-// real Auth.js (NextAuth) Google provider and read the session server-side.
-const MOCK_GOOGLE_USER: User = {
-  id: "u_admin",
-  name: "Demo Admin",
-  email: "admin@streamplus.app",
-  avatar: "https://api.dicebear.com/7.x/initials/svg?seed=Demo%20Admin",
-  role: "admin",
+type AuthContextValue = {
+  user: User | null;
+  loading: boolean;
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signInWithGoogle: () => Promise<AuthResult>;
+  signOut: () => Promise<void>;
 };
 
-// --- Module-level store backed by localStorage -----------------------------
+const AuthContext = createContext<AuthContextValue | null>(null);
 
-const listeners = new Set<() => void>();
-let cachedRaw: string | null = null;
-let cachedUser: User | null = null;
-
-function readRaw(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
+async function postJson(url: string, body?: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
 }
 
-function getSnapshot(): User | null {
-  const raw = readRaw();
-  // Only re-parse (and hand back a new object reference) when the underlying
-  // string changed, so useSyncExternalStore stays stable between renders.
-  if (raw !== cachedRaw) {
-    cachedRaw = raw;
-    try {
-      cachedUser = raw ? (JSON.parse(raw) as User) : null;
-    } catch {
-      cachedUser = null;
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) {
+          setUser(d.user ?? null);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function signUp(name: string, email: string, password: string) {
+    const { ok, data } = await postJson("/api/auth/signup", {
+      name,
+      email,
+      password,
+    });
+    if (ok) {
+      setUser(data.user);
+      return {};
     }
+    return { error: data.error || "Could not sign up." };
   }
-  return cachedUser;
-}
 
-function getServerSnapshot(): User | null {
-  return null;
-}
-
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", cb);
-  };
-}
-
-function emit() {
-  for (const l of listeners) l();
-}
-
-function writeUser(user: User | null) {
-  try {
-    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore storage failure
+  async function signIn(email: string, password: string) {
+    const { ok, data } = await postJson("/api/auth/login", { email, password });
+    if (ok) {
+      setUser(data.user);
+      return {};
+    }
+    return { error: data.error || "Could not sign in." };
   }
-  emit();
-}
 
-// --- Public hook -----------------------------------------------------------
+  async function signInWithGoogle() {
+    const { ok, data } = await postJson("/api/auth/demo");
+    if (ok) {
+      setUser(data.user);
+      return {};
+    }
+    return { error: data.error || "Could not sign in." };
+  }
+
+  async function signOut() {
+    await postJson("/api/auth/logout");
+    setUser(null);
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{ user, loading, signUp, signIn, signInWithGoogle, signOut }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
 export function useAuth() {
-  const user = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  // `false` on the server / during hydration, `true` once mounted on the
-  // client — a clean loading gate with no setState-in-effect.
-  const hydrated = useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false
-  );
-
-  return {
-    user: hydrated ? user : null,
-    loading: !hydrated,
-    signInWithGoogle: () => writeUser(MOCK_GOOGLE_USER),
-    signOut: () => writeUser(null),
-  };
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  return ctx;
 }

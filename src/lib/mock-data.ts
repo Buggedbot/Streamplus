@@ -67,26 +67,8 @@ export const TRENDING = REELS.map((r) => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Admin dashboard mock data (no backend yet — seed data for the UI).
+// Admin dashboard seed data (analytics + moderation still use sample data).
 // ---------------------------------------------------------------------------
-
-export type AdminUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: "admin" | "viewer";
-  status: "active" | "suspended";
-  joined: string;
-};
-
-export const ADMIN_USERS: AdminUser[] = [
-  { id: "u_admin", name: "Demo Admin", email: "admin@streamplus.app", role: "admin", status: "active", joined: "2026-01-04" },
-  { id: "u_1", name: "Aisha Khan", email: "aisha@example.com", role: "viewer", status: "active", joined: "2026-02-11" },
-  { id: "u_2", name: "Marco Silva", email: "marco@example.com", role: "viewer", status: "active", joined: "2026-03-02" },
-  { id: "u_3", name: "Lena Fischer", email: "lena@example.com", role: "viewer", status: "suspended", joined: "2026-03-19" },
-  { id: "u_4", name: "Diego Torres", email: "diego@example.com", role: "viewer", status: "active", joined: "2026-04-07" },
-  { id: "u_5", name: "Priya Nair", email: "priya@example.com", role: "admin", status: "active", joined: "2026-05-21" },
-];
 
 export type Report = {
   id: string;
