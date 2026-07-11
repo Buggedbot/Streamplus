@@ -20,6 +20,9 @@ const empty = () => ({
   views: {}, // videoId -> count
   uploads: [], // upload metadata (newest last)
   reports: [], // moderation reports (newest last)
+  notifications: {}, // userId -> notification[] (newest last)
+  history: {}, // userId -> watched item[] (newest last)
+  saved: {}, // userId -> saved item[] (newest last)
 });
 
 /** @type {ReturnType<typeof empty>} */
@@ -278,6 +281,106 @@ export function addUpload(meta) {
 
 export function listUploads() {
   return [...db.uploads].reverse();
+}
+
+// --- Notifications -----------------------------------------------------------
+
+export function addNotification(userId, { type, text, href }) {
+  if (!userId || !db.users[userId]) return;
+  const list = db.notifications[userId] || (db.notifications[userId] = []);
+  list.push({
+    id: id("n"),
+    type: String(type || "info"),
+    text: String(text || "").slice(0, 200),
+    href: String(href || "").slice(0, 200),
+    at: Date.now(),
+    read: false,
+  });
+  if (list.length > 100) list.splice(0, list.length - 100);
+  persist();
+}
+
+export function getNotifications(userId) {
+  return [...(db.notifications[userId] || [])].reverse();
+}
+
+export function markNotificationsRead(userId) {
+  const list = db.notifications[userId];
+  if (!list) return;
+  for (const n of list) n.read = true;
+  persist();
+}
+
+// --- Watch history -----------------------------------------------------------
+
+export function addHistory(userId, item) {
+  if (!userId) return;
+  const list = db.history[userId] || (db.history[userId] = []);
+  // De-dupe: re-watching moves the item to the top.
+  const i = list.findIndex((x) => x.videoId === item.videoId);
+  if (i > -1) list.splice(i, 1);
+  list.push({
+    videoId: String(item.videoId || "").slice(0, 300),
+    title: String(item.title || "Untitled").slice(0, 120),
+    src: String(item.src || "").slice(0, 500),
+    at: Date.now(),
+  });
+  if (list.length > 100) list.splice(0, list.length - 100);
+  persist();
+}
+
+export function getHistory(userId) {
+  return [...(db.history[userId] || [])].reverse();
+}
+
+// --- Saved / bookmarks ---------------------------------------------------------
+
+export function toggleSaved(userId, item) {
+  if (!userId) return { saved: false };
+  const list = db.saved[userId] || (db.saved[userId] = []);
+  const i = list.findIndex((x) => x.videoId === item.videoId);
+  if (i > -1) {
+    list.splice(i, 1);
+    persist();
+    return { saved: false };
+  }
+  list.push({
+    videoId: String(item.videoId || "").slice(0, 300),
+    title: String(item.title || "Untitled").slice(0, 120),
+    src: String(item.src || "").slice(0, 500),
+    at: Date.now(),
+  });
+  if (list.length > 200) list.splice(0, list.length - 200);
+  persist();
+  return { saved: true };
+}
+
+export function getSaved(userId) {
+  return [...(db.saved[userId] || [])].reverse();
+}
+
+export function isSaved(userId, videoId) {
+  return Boolean((db.saved[userId] || []).find((x) => x.videoId === videoId));
+}
+
+// --- Search --------------------------------------------------------------------
+
+export function search(q) {
+  const term = String(q || "").trim().toLowerCase();
+  if (!term) return { users: [], uploads: [] };
+  const users = Object.values(db.users)
+    .filter((u) => u.name.toLowerCase().includes(term))
+    .slice(0, 10)
+    .map(publicUser);
+  const uploads = db.uploads
+    .filter(
+      (u) =>
+        u.title.toLowerCase().includes(term) ||
+        (u.ownerName || "").toLowerCase().includes(term)
+    )
+    .slice(-20)
+    .reverse();
+  return { users, uploads };
 }
 
 // --- Moderation reports ----------------------------------------------------

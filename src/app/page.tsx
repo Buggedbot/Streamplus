@@ -6,7 +6,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { TRENDING } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
-import { LinkIcon, DownloadIcon, PlayIcon, PlusIcon } from "@/components/icons";
+import {
+  LinkIcon,
+  DownloadIcon,
+  PlayIcon,
+  PlusIcon,
+  BookmarkIcon,
+} from "@/components/icons";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -32,6 +38,7 @@ function WatchInner() {
   );
   const [error, setError] = useState("");
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -44,9 +51,45 @@ function WatchInner() {
     };
   }, []);
 
+  // Record watch history and load saved state for the active video.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    fetch("/api/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId: activeUrl, title: activeTitle, src: activeUrl }),
+    }).catch(() => {});
+    fetch(`/api/saved?videoId=${encodeURIComponent(activeUrl)}`)
+      .then((r) => r.json())
+      .then((d) => alive && setSaved(Boolean(d.saved)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // activeTitle intentionally read once per video change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeUrl]);
+
   function play(url: string, title: string) {
     setActiveUrl(url);
     setActiveTitle(title);
+  }
+
+  async function toggleSave() {
+    if (!user) return;
+    setSaved((s) => !s);
+    try {
+      const r = await fetch("/api/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: activeUrl, title: activeTitle, src: activeUrl }),
+      });
+      const d = await r.json();
+      if (typeof d.saved === "boolean") setSaved(d.saved);
+    } catch {
+      setSaved((s) => !s);
+    }
   }
 
   function handleLoad(e: React.FormEvent) {
@@ -66,9 +109,22 @@ function WatchInner() {
   const canDownload = DIRECT_FILE_RE.test(activeUrl);
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-8">
+    <div className="w-full max-w-5xl mx-auto px-4 py-6 sm:py-10 flex flex-col gap-8">
+      {/* Hero */}
+      <div className="text-center sm:text-left">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+          Watch{" "}
+          <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+            anything
+          </span>
+        </h1>
+        <p className="mt-1.5 text-sm text-white/50">
+          Paste a link from anywhere, or dive into what the community uploaded.
+        </p>
+      </div>
+
       {/* Link input */}
-      <form onSubmit={handleLoad} className="flex flex-col gap-2">
+      <form onSubmit={handleLoad} className="flex flex-col gap-2 -mt-2">
         <div className="flex flex-col sm:flex-row gap-2.5">
           <div className="relative flex-1">
             <LinkIcon
@@ -97,30 +153,49 @@ function WatchInner() {
 
       {/* Player */}
       <div className="flex flex-col gap-3">
-        <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl shadow-black/50">
-          <ReactPlayer
-            key={activeUrl}
-            src={activeUrl}
-            playing
-            controls
-            width="100%"
-            height="100%"
-          />
+        <div className="relative">
+          {/* Soft ambient glow behind the player */}
+          <div className="pointer-events-none absolute -inset-4 rounded-[2rem] bg-gradient-to-r from-violet-600/25 via-fuchsia-600/15 to-indigo-600/25 blur-2xl" />
+          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl shadow-black/50">
+            <ReactPlayer
+              key={activeUrl}
+              src={activeUrl}
+              playing
+              controls
+              width="100%"
+              height="100%"
+            />
+          </div>
         </div>
         <div className="flex items-center justify-between gap-4 px-1">
           <p className="text-sm font-medium text-white/80 line-clamp-1">
             {activeTitle}
           </p>
-          {canDownload && (
-            <a
-              href={activeUrl}
-              download
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <DownloadIcon width={15} height={15} />
-              Download
-            </a>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {user && (
+              <button
+                onClick={toggleSave}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                  saved
+                    ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
+                    : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <BookmarkIcon width={15} height={15} filled={saved} />
+                {saved ? "Saved" : "Save"}
+              </button>
+            )}
+            {canDownload && (
+              <a
+                href={activeUrl}
+                download
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <DownloadIcon width={15} height={15} />
+                Download
+              </a>
+            )}
+          </div>
         </div>
       </div>
 

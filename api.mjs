@@ -139,6 +139,13 @@ export async function handleApi(req, res) {
       if (!me) return json(res, 401, { error: "Sign in first." }), true;
       const { targetId, on } = await readBody(req);
       store.setFollow(me.id, targetId, !!on);
+      if (on) {
+        store.addNotification(targetId, {
+          type: "follow",
+          text: `${me.name} started following you`,
+          href: `/u/${me.id}`,
+        });
+      }
       return json(res, 200, { counts: store.followCounts(targetId), isFollowing: !!on }), true;
     }
 
@@ -168,6 +175,15 @@ export async function handleApi(req, res) {
         name: me.name,
         text: String(text).trim(),
       });
+      // Notify the owner when the video is a user upload.
+      const owner = store.listUploads().find((u) => u.id === videoId)?.ownerId;
+      if (owner && owner !== me.id) {
+        store.addNotification(owner, {
+          type: "comment",
+          text: `${me.name} commented on your video`,
+          href: `/library`,
+        });
+      }
       return json(res, 200, { comment }), true;
     }
 
@@ -183,6 +199,59 @@ export async function handleApi(req, res) {
       if (!me) return json(res, 401, { error: "Sign in to like." }), true;
       const { videoId } = await readBody(req);
       return json(res, 200, store.toggleLike(videoId, me.id)), true;
+    }
+
+    // --- Notifications ---
+    if (path === "/api/notifications" && method === "GET") {
+      const me = currentUser(req);
+      if (!me) return json(res, 200, { notifications: [], unread: 0 }), true;
+      const notifications = store.getNotifications(me.id);
+      const unread = notifications.filter((n) => !n.read).length;
+      return json(res, 200, { notifications, unread }), true;
+    }
+
+    if (path === "/api/notifications/read" && method === "POST") {
+      const me = currentUser(req);
+      if (me) store.markNotificationsRead(me.id);
+      return json(res, 200, { ok: true }), true;
+    }
+
+    // --- Watch history ---
+    if (path === "/api/history" && method === "GET") {
+      const me = currentUser(req);
+      return json(res, 200, { history: me ? store.getHistory(me.id) : [] }), true;
+    }
+
+    if (path === "/api/history" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 200, { ok: false }), true;
+      const { videoId, title, src } = await readBody(req);
+      if (videoId && src) store.addHistory(me.id, { videoId, title, src });
+      return json(res, 200, { ok: true }), true;
+    }
+
+    // --- Saved / bookmarks ---
+    if (path === "/api/saved" && method === "GET") {
+      const me = currentUser(req);
+      const videoId = url.searchParams.get("videoId");
+      if (videoId) {
+        return json(res, 200, { saved: me ? store.isSaved(me.id, videoId) : false }), true;
+      }
+      return json(res, 200, { saved: me ? store.getSaved(me.id) : [] }), true;
+    }
+
+    if (path === "/api/saved" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in to save videos." }), true;
+      const { videoId, title, src } = await readBody(req);
+      if (!videoId || !src) return json(res, 400, { error: "Missing video." }), true;
+      return json(res, 200, store.toggleSaved(me.id, { videoId, title, src })), true;
+    }
+
+    // --- Search ---
+    if (path === "/api/search" && method === "GET") {
+      const q = url.searchParams.get("q") || "";
+      return json(res, 200, store.search(q)), true;
     }
 
     // --- Reports (moderation) ---

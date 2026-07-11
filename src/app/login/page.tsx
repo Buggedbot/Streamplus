@@ -57,7 +57,8 @@ function LoginInner() {
         {mode === "signup" ? "Create your account" : "Welcome back"}
       </p>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+      <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+        <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-b from-violet-600/20 to-transparent blur-2xl" />
         <button
           onClick={demo}
           disabled={busy}
