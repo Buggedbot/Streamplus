@@ -145,6 +145,14 @@ const playbackByRoom = new Map();
 const hostByRoom = new Map();
 /** @type {Map<string, { items: Array<object>, current: {title:string, src:string}|null }>} */
 const queueByRoom = new Map();
+/** @type {Map<string, { id:string, title:string, hostId:string, hostName:string, viewers:number, at:number }>} */
+const liveStreams = new Map();
+
+function liveList() {
+  return [...liveStreams.values()]
+    .sort((a, b) => b.at - a.at)
+    .map(({ id, title, hostName, viewers }) => ({ id, title, hostName, viewers }));
+}
 
 function getPlayback(roomId) {
   let pb = playbackByRoom.get(roomId);
@@ -335,6 +343,75 @@ app.prepare().then(() => {
       io.to(to).emit("signal", { from: socket.id, data });
     });
 
+    // --- Live streaming (one broadcaster -> many viewers, WebRTC mesh) ------
+    socket.on("live:list", () => socket.emit("live:list", liveList()));
+
+    socket.on("live:start", ({ id, title, name }) => {
+      if (!id) return;
+      socket.data.name = String(name || socket.data.name || "Host").slice(0, 40);
+      const room = `live:${id}`;
+      socket.join(room);
+      socket.data.liveId = id;
+      socket.data.liveHost = true;
+      liveStreams.set(id, {
+        id,
+        title: String(title || "Live stream").slice(0, 80),
+        hostId: socket.id,
+        hostName: socket.data.name,
+        viewers: 0,
+        at: Date.now(),
+      });
+      io.emit("live:list", liveList());
+    });
+
+    socket.on("live:join", ({ id, name }) => {
+      const stream = liveStreams.get(id);
+      socket.data.name = String(name || socket.data.name || "Guest").slice(0, 40);
+      if (!stream) {
+        socket.emit("live:ended");
+        return;
+      }
+      const room = `live:${id}`;
+      socket.join(room);
+      socket.data.liveId = id;
+      socket.data.liveViewer = true;
+      stream.viewers += 1;
+      socket.emit("live:info", {
+        title: stream.title,
+        hostName: stream.hostName,
+        viewers: stream.viewers,
+      });
+      // Ask the broadcaster to start sending to this viewer.
+      io.to(stream.hostId).emit("live:viewer-join", {
+        viewerId: socket.id,
+        name: socket.data.name,
+      });
+      io.to(room).emit("live:viewers", stream.viewers);
+      io.emit("live:list", liveList());
+    });
+
+    function liveLeave() {
+      const id = socket.data.liveId;
+      if (!id) return;
+      const room = `live:${id}`;
+      const stream = liveStreams.get(id);
+      if (socket.data.liveHost) {
+        liveStreams.delete(id);
+        socket.to(room).emit("live:ended");
+        io.emit("live:list", liveList());
+      } else if (socket.data.liveViewer && stream) {
+        stream.viewers = Math.max(0, stream.viewers - 1);
+        io.to(stream.hostId).emit("live:viewer-leave", { viewerId: socket.id });
+        io.to(room).emit("live:viewers", stream.viewers);
+        io.emit("live:list", liveList());
+      }
+      socket.leave(room);
+      socket.data.liveId = null;
+      socket.data.liveHost = false;
+      socket.data.liveViewer = false;
+    }
+    socket.on("live:leave", liveLeave);
+
     function leave() {
       const roomId = socket.data.roomId;
       if (!roomId) return;
@@ -366,7 +443,10 @@ app.prepare().then(() => {
     }
 
     socket.on("leave", leave);
-    socket.on("disconnect", leave);
+    socket.on("disconnect", () => {
+      leave();
+      liveLeave();
+    });
   });
 
   httpServer.listen(port, () => {

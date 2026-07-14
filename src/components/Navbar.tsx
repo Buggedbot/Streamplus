@@ -12,6 +12,7 @@ import {
   SearchIcon,
   BellIcon,
   BookmarkIcon,
+  LiveIcon,
 } from "@/components/icons";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/lib/auth";
@@ -19,6 +20,7 @@ import { useAuth } from "@/lib/auth";
 const LINKS = [
   { href: "/", label: "Watch", Icon: WatchIcon },
   { href: "/reels", label: "Reels", Icon: ReelsIcon },
+  { href: "/live", label: "Live", Icon: LiveIcon },
   { href: "/party", label: "Party", Icon: PartyIcon },
   { href: "/chat", label: "Chat", Icon: CommentIcon },
 ];

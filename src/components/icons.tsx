@@ -237,6 +237,25 @@ export function CopyIcon(props: IconProps) {
   );
 }
 
+export function LiveIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 17.7a8 8 0 0 0 0-11.4" />
+      <path d="M3.5 3.5a12 12 0 0 0 0 17M20.5 20.5a12 12 0 0 0 0-17" />
+    </svg>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export function CameraIcon(props: IconProps) {
   return (
     <svg {...base(props)}>
