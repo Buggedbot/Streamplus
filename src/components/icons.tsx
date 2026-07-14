@@ -237,6 +237,33 @@ export function CopyIcon(props: IconProps) {
   );
 }
 
+export function CameraIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m23 7-7 5 7 5V7Z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
+  );
+}
+
+export function CameraOffIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M10.66 5H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10" />
+      <path d="M16 16a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  );
+}
+
+export function CrownIcon(props: IconProps) {
+  return (
+    <svg {...base(props)} fill="currentColor" stroke="none">
+      <path d="M2 18h20l-1.5-9-4.5 4-4-6-4 6-4-4L2 18Z" />
+    </svg>
+  );
+}
+
 export function CheckIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

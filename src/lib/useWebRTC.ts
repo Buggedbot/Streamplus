@@ -23,8 +23,10 @@ export function useWebRTC(
   connected: boolean
 ) {
   const [micOn, setMicOn] = useState(false);
+  const [camOn, setCamOn] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [localScreen, setLocalScreen] = useState<MediaStream | null>(null);
+  const [localCam, setLocalCam] = useState<MediaStream | null>(null);
   const [remotes, setRemotes] = useState<RemoteMedia[]>([]);
   const [notice, setNotice] = useState("");
 
@@ -32,6 +34,7 @@ export function useWebRTC(
   const names = useRef<Map<string, string>>(new Map());
   const makingOffer = useRef<Map<string, boolean>>(new Map());
   const micStream = useRef<MediaStream | null>(null);
+  const camStream = useRef<MediaStream | null>(null);
   const screenStream = useRef<MediaStream | null>(null);
 
   const flashNotice = useCallback((msg: string) => {
@@ -60,7 +63,7 @@ export function useWebRTC(
       pcs.current.set(peerId, pc);
 
       // Push any media we're already sending to the new peer.
-      [micStream.current, screenStream.current].forEach((s) => {
+      [micStream.current, camStream.current, screenStream.current].forEach((s) => {
         s?.getTracks().forEach((t) => pc.addTrack(t, s));
       });
 
@@ -174,6 +177,7 @@ export function useWebRTC(
     const connections = pcs.current;
     return () => {
       micStream.current?.getTracks().forEach((t) => t.stop());
+      camStream.current?.getTracks().forEach((t) => t.stop());
       screenStream.current?.getTracks().forEach((t) => t.stop());
       connections.forEach((pc) => pc.close());
       connections.clear();
@@ -214,6 +218,25 @@ export function useWebRTC(
     }
   }
 
+  async function toggleCam() {
+    if (camOn) {
+      removeLocalStream(camStream.current);
+      camStream.current = null;
+      setLocalCam(null);
+      setCamOn(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      camStream.current = stream;
+      addLocalStream(stream);
+      setLocalCam(stream);
+      setCamOn(true);
+    } catch {
+      flashNotice("Couldn't access your camera (permission or device).");
+    }
+  }
+
   function stopSharing() {
     removeLocalStream(screenStream.current);
     screenStream.current = null;
@@ -243,11 +266,14 @@ export function useWebRTC(
 
   return {
     micOn,
+    camOn,
     sharing,
     localScreen,
+    localCam,
     remotes,
     notice,
     toggleMic,
+    toggleCam,
     toggleShare,
   };
 }

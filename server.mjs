@@ -141,6 +141,10 @@ const handle = app.getRequestHandler();
 // for watch-party chat and `dm:<id>` for direct-message conversations.
 /** @type {Map<string, { playing: boolean, time: number, at: number }>} */
 const playbackByRoom = new Map();
+/** @type {Map<string, string>} roomId -> host socket id */
+const hostByRoom = new Map();
+/** @type {Map<string, { items: Array<object>, current: {title:string, src:string}|null }>} */
+const queueByRoom = new Map();
 
 function getPlayback(roomId) {
   let pb = playbackByRoom.get(roomId);
@@ -151,12 +155,22 @@ function getPlayback(roomId) {
   return pb;
 }
 
+function getQueue(roomId) {
+  let q = queueByRoom.get(roomId);
+  if (!q) {
+    q = { items: [], current: null };
+    queueByRoom.set(roomId, q);
+  }
+  return q;
+}
+
 function participantsOf(io, roomId) {
+  const host = hostByRoom.get(roomId);
   const set = io.sockets.adapter.rooms.get(roomId);
   if (!set) return [];
   return [...set].map((id) => {
     const s = io.sockets.sockets.get(id);
-    return { id, name: s?.data?.name || "Guest" };
+    return { id, name: s?.data?.name || "Guest", isHost: id === host };
   });
 }
 
@@ -191,16 +205,22 @@ app.prepare().then(() => {
       socket.data.roomId = roomId;
       socket.join(roomId);
 
+      // First person into an empty room becomes the host.
+      if (!hostByRoom.get(roomId)) hostByRoom.set(roomId, socket.id);
+
       // Catch the joiner up on current playback + persisted chat history.
       socket.emit("sync", {
         playback: getPlayback(roomId),
         messages: getMessages(`party:${roomId}`),
         you: { id: socket.id, name: socket.data.name },
+        host: hostByRoom.get(roomId),
+        queue: getQueue(roomId),
       });
 
       // Update everyone's presence, and tell existing peers a newcomer
       // arrived so they can initiate WebRTC offers.
       io.to(roomId).emit("presence", participantsOf(io, roomId));
+      io.to(roomId).emit("host", hostByRoom.get(roomId));
       socket.to(roomId).emit("peer-join", {
         id: socket.id,
         name: socket.data.name,
@@ -251,15 +271,62 @@ app.prepare().then(() => {
       io.to(room).emit("dm:message", { channelId, ...msg });
     });
 
-    // Co-watch: broadcast playback changes to everyone else in the room.
+    // Co-watch: only the host's playback changes are authoritative.
     socket.on("playback", ({ playing, time }) => {
       const roomId = socket.data.roomId;
-      if (!roomId) return;
+      if (!roomId || hostByRoom.get(roomId) !== socket.id) return;
       const pb = getPlayback(roomId);
       pb.playing = !!playing;
       pb.time = Number(time) || 0;
       pb.at = Date.now();
       socket.to(roomId).emit("playback", pb);
+    });
+
+    // --- Shared party queue ------------------------------------------------
+    // Anyone in the room can add to the queue.
+    socket.on("queue:add", ({ title, src }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId || !src) return;
+      const q = getQueue(roomId);
+      const item = {
+        id: `${socket.id}-${Date.now()}`,
+        title: String(title || "Untitled").slice(0, 120),
+        src: String(src).slice(0, 500),
+        by: socket.data.name || "Guest",
+        byId: socket.id,
+      };
+      q.items.push(item);
+      if (!q.current) q.current = { title: item.title, src: item.src };
+      io.to(roomId).emit("queue", q);
+    });
+
+    // The host or the person who added an item can remove it.
+    socket.on("queue:remove", ({ id }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const q = getQueue(roomId);
+      const item = q.items.find((i) => i.id === id);
+      if (!item) return;
+      if (hostByRoom.get(roomId) !== socket.id && item.byId !== socket.id) return;
+      q.items = q.items.filter((i) => i.id !== id);
+      io.to(roomId).emit("queue", q);
+    });
+
+    // Only the host can switch what the room is watching.
+    socket.on("queue:play", ({ title, src }) => {
+      const roomId = socket.data.roomId;
+      if (!roomId || !src || hostByRoom.get(roomId) !== socket.id) return;
+      const q = getQueue(roomId);
+      q.current = {
+        title: String(title || "Untitled").slice(0, 120),
+        src: String(src).slice(0, 500),
+      };
+      const pb = getPlayback(roomId);
+      pb.playing = true;
+      pb.time = 0;
+      pb.at = Date.now();
+      io.to(roomId).emit("nowplaying", q.current);
+      io.to(roomId).emit("playback", pb);
     });
 
     // WebRTC signaling relay (offers/answers/ICE candidates), targeted 1:1.
@@ -273,11 +340,28 @@ app.prepare().then(() => {
       if (!roomId) return;
       socket.to(roomId).emit("peer-leave", { id: socket.id });
       socket.leave(roomId);
-      // Emit presence after this socket has left.
-      setTimeout(() => io.to(roomId).emit("presence", participantsOf(io, roomId)), 0);
-      // Forget playback state for now-empty rooms.
+
+      // If the host left, hand the room to whoever's still here.
+      if (hostByRoom.get(roomId) === socket.id) {
+        const remaining = io.sockets.adapter.rooms.get(roomId);
+        const next = remaining && remaining.size ? [...remaining][0] : null;
+        if (next) hostByRoom.set(roomId, next);
+        else hostByRoom.delete(roomId);
+      }
+
+      // Emit presence + host after this socket has left.
+      setTimeout(() => {
+        io.to(roomId).emit("presence", participantsOf(io, roomId));
+        io.to(roomId).emit("host", hostByRoom.get(roomId) || null);
+      }, 0);
+
+      // Forget ephemeral state for now-empty rooms.
       const set = io.sockets.adapter.rooms.get(roomId);
-      if (!set || set.size === 0) playbackByRoom.delete(roomId);
+      if (!set || set.size === 0) {
+        playbackByRoom.delete(roomId);
+        queueByRoom.delete(roomId);
+        hostByRoom.delete(roomId);
+      }
       socket.data.roomId = null;
     }
 
