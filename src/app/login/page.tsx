@@ -103,7 +103,7 @@ function LoginInner() {
           <button
             type="submit"
             disabled={busy}
-            className="rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-[0.99] transition py-3 text-sm font-semibold disabled:opacity-60"
+            className="btn-grad rounded-full py-3 text-sm font-bold text-white disabled:opacity-60"
           >
             {mode === "signup" ? "Create account" : "Sign in"}
           </button>

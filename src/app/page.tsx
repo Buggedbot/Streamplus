@@ -4,8 +4,10 @@ import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { TRENDING } from "@/lib/mock-data";
+import { TRENDING, REELS } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
+import { VideoCard } from "@/components/VideoCard";
+import { Shelf } from "@/components/Shelf";
 import {
   LinkIcon,
   DownloadIcon,
@@ -67,13 +69,15 @@ function WatchInner() {
     return () => {
       alive = false;
     };
-    // activeTitle intentionally read once per video change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeUrl]);
 
   function play(url: string, title: string) {
     setActiveUrl(url);
     setActiveTitle(title);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   async function toggleSave() {
@@ -109,54 +113,40 @@ function WatchInner() {
   const canDownload = DIRECT_FILE_RE.test(activeUrl);
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-6 sm:py-10 flex flex-col gap-8">
-      {/* Hero */}
-      <div className="text-center sm:text-left">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-          Watch{" "}
-          <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-            anything
-          </span>
-        </h1>
-        <p className="mt-1.5 text-sm text-white/50">
-          Paste a link from anywhere, or dive into what the community uploaded.
-        </p>
-      </div>
-
-      {/* Link input */}
-      <form onSubmit={handleLoad} className="flex flex-col gap-2 -mt-2">
-        <div className="flex flex-col sm:flex-row gap-2.5">
+    <div className="w-full max-w-6xl mx-auto px-4 py-5 sm:py-8 flex flex-col gap-9">
+      {/* Paste-link bar */}
+      <form onSubmit={handleLoad} className="flex flex-col gap-2">
+        <div className="flex gap-2.5">
           <div className="relative flex-1">
             <LinkIcon
               width={18}
               height={18}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40"
             />
             <input
               type="text"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="Paste a video link — YouTube, Vimeo, Twitch, MP4…"
-              className="w-full rounded-xl bg-white/5 border border-white/10 pl-11 pr-4 py-3.5 text-sm outline-none transition-colors focus:border-violet-500 focus:bg-white/[0.07] placeholder:text-white/40"
+              placeholder="Paste any video link — YouTube, Vimeo, Twitch, MP4…"
+              className="w-full rounded-full bg-white/5 border border-white/10 pl-12 pr-4 py-3.5 text-sm outline-none transition-colors focus:border-fuchsia-500/60 focus:bg-white/[0.07] placeholder:text-white/40"
             />
           </div>
           <button
             type="submit"
-            className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-[0.98] transition px-6 py-3.5 text-sm font-semibold"
+            className="btn-grad flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white"
           >
             <PlayIcon width={16} height={16} />
-            Play
+            <span className="hidden sm:inline">Play</span>
           </button>
         </div>
-        {error && <p className="text-red-400 text-sm px-1">{error}</p>}
+        {error && <p className="text-red-400 text-sm px-2">{error}</p>}
       </form>
 
-      {/* Player */}
-      <div className="flex flex-col gap-3">
+      {/* Featured player */}
+      <div className="flex flex-col gap-4">
         <div className="relative">
-          {/* Soft ambient glow behind the player */}
-          <div className="pointer-events-none absolute -inset-4 rounded-[2rem] bg-gradient-to-r from-violet-600/25 via-fuchsia-600/15 to-indigo-600/25 blur-2xl" />
-          <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl shadow-black/50">
+          <div className="pointer-events-none absolute -inset-6 rounded-[2.5rem] bg-gradient-to-r from-violet-600/30 via-fuchsia-600/20 to-indigo-600/30 blur-3xl" />
+          <div className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black ring-1 ring-white/10 shadow-2xl shadow-black/60">
             <ReactPlayer
               key={activeUrl}
               src={activeUrl}
@@ -168,16 +158,14 @@ function WatchInner() {
           </div>
         </div>
         <div className="flex items-center justify-between gap-4 px-1">
-          <p className="text-sm font-medium text-white/80 line-clamp-1">
-            {activeTitle}
-          </p>
+          <p className="text-base font-semibold line-clamp-1">{activeTitle}</p>
           <div className="flex shrink-0 items-center gap-2">
             {user && (
               <button
                 onClick={toggleSave}
-                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
                   saved
-                    ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
+                    ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300"
                     : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
                 }`}
               >
@@ -189,126 +177,72 @@ function WatchInner() {
               <a
                 href={activeUrl}
                 download
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <DownloadIcon width={15} height={15} />
-                Download
+                <span className="hidden sm:inline">Download</span>
               </a>
             )}
           </div>
         </div>
       </div>
 
-      {/* Latest uploads */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-white/90">
-            Latest uploads
-          </h2>
+      {/* Latest uploads shelf */}
+      <Shelf
+        title="Latest uploads"
+        action={{ label: "Upload +", href: user ? "/upload" : "/login?next=/upload" }}
+      >
+        {uploads.length === 0 ? (
           <Link
             href={user ? "/upload" : "/login?next=/upload"}
-            className="flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-medium transition-colors"
+            className="flex w-72 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] aspect-video text-center text-sm text-white/45 hover:bg-white/5 transition-colors"
           >
-            <PlusIcon width={15} height={15} />
-            Upload
+            <PlusIcon width={22} height={22} />
+            Upload the first video
           </Link>
-        </div>
-        {uploads.length === 0 ? (
-          <p className="text-sm text-white/40 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-8 text-center">
-            No uploads yet.{" "}
-            <Link
-              href={user ? "/upload" : "/login?next=/upload"}
-              className="text-violet-400 hover:text-violet-300"
-            >
-              Be the first →
-            </Link>
-          </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5">
-            {uploads.map((item) => {
-              const active = item.src === activeUrl;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => play(item.src, item.title)}
-                  className="text-left group focus:outline-none"
-                >
-                  <div
-                    className={`relative aspect-video rounded-xl overflow-hidden bg-black border mb-2 transition-colors ${
-                      active
-                        ? "border-violet-500"
-                        : "border-white/10 group-hover:border-white/25"
-                    }`}
-                  >
-                    <video
-                      src={item.src}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="w-full h-full object-cover"
-                    />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition-colors">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black scale-90 group-hover:scale-100 transition-transform">
-                        <PlayIcon width={18} height={18} className="translate-x-0.5" />
-                      </span>
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium line-clamp-1 text-white/90">
-                    {item.title}
-                  </p>
-                  <Link
-                    href={`/u/${item.ownerId}`}
-                    className="text-xs text-white/40 mt-0.5 hover:text-white/70"
-                  >
-                    {item.ownerName}
-                  </Link>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Trending */}
-      <section>
-        <h2 className="text-base font-semibold mb-4 text-white/90">Trending</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5">
-          {TRENDING.map((item) => {
-            const active = item.src === activeUrl;
-            return (
-              <button
-                key={item.id}
+          uploads.map((item) => (
+            <div key={item.id} className="w-64 shrink-0">
+              <VideoCard
+                title={item.title}
+                subtitle={item.ownerName}
+                videoSrc={item.src}
+                active={item.src === activeUrl}
                 onClick={() => play(item.src, item.title)}
-                className="text-left group focus:outline-none"
-              >
-                <div
-                  className={`relative aspect-video rounded-xl overflow-hidden bg-white/5 border mb-2 transition-colors ${
-                    active
-                      ? "border-violet-500"
-                      : "border-white/10 group-hover:border-white/25"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.thumbnail}
-                    alt={item.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-colors">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/0 group-hover:bg-white/90 group-hover:text-black transition-all scale-75 group-hover:scale-100">
-                      <PlayIcon width={18} height={18} className="translate-x-0.5" />
-                    </span>
-                  </span>
-                </div>
-                <p className="text-sm font-medium line-clamp-1 text-white/90">
-                  {item.title}
-                </p>
-                <p className="text-xs text-white/40 mt-0.5">{item.channel}</p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+              />
+            </div>
+          ))
+        )}
+      </Shelf>
+
+      {/* Trending shelf */}
+      <Shelf title="Trending now">
+        {TRENDING.map((item) => (
+          <div key={item.id} className="w-64 shrink-0">
+            <VideoCard
+              title={item.title}
+              subtitle={item.channel}
+              poster={item.thumbnail}
+              active={item.src === activeUrl}
+              onClick={() => play(item.src, item.title)}
+            />
+          </div>
+        ))}
+      </Shelf>
+
+      {/* Reels shelf */}
+      <Shelf title="Reels" action={{ label: "Open reels", href: "/reels" }}>
+        {REELS.map((r) => (
+          <div key={r.id} className="w-40 shrink-0">
+            <VideoCard
+              title={r.caption}
+              href={`/reels?reel=${r.id}`}
+              poster={r.poster}
+              aspect="portrait"
+            />
+          </div>
+        ))}
+      </Shelf>
     </div>
   );
 }
