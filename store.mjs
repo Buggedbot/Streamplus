@@ -23,6 +23,7 @@ const empty = () => ({
   notifications: {}, // userId -> notification[] (newest last)
   history: {}, // userId -> watched item[] (newest last)
   saved: {}, // userId -> saved item[] (newest last)
+  playlists: {}, // playlistId -> { id, ownerId, ownerName, title, items[] }
 });
 
 /** @type {ReturnType<typeof empty>} */
@@ -361,6 +362,63 @@ export function getSaved(userId) {
 
 export function isSaved(userId, videoId) {
   return Boolean((db.saved[userId] || []).find((x) => x.videoId === videoId));
+}
+
+// --- Playlists -----------------------------------------------------------------
+
+export function createPlaylist(owner, title) {
+  const playlist = {
+    id: id("pl"),
+    ownerId: owner.id,
+    ownerName: owner.name,
+    title: String(title || "Untitled playlist").slice(0, 80),
+    items: [],
+    at: Date.now(),
+  };
+  db.playlists[playlist.id] = playlist;
+  persist();
+  return playlist;
+}
+
+export function listPlaylists(ownerId) {
+  return Object.values(db.playlists)
+    .filter((p) => !ownerId || p.ownerId === ownerId)
+    .sort((a, b) => b.at - a.at);
+}
+
+export function getPlaylist(playlistId) {
+  return db.playlists[playlistId] || null;
+}
+
+export function addToPlaylist(playlistId, ownerId, item) {
+  const p = db.playlists[playlistId];
+  if (!p || p.ownerId !== ownerId) return null;
+  if (!p.items.find((x) => x.videoId === item.videoId)) {
+    p.items.push({
+      videoId: String(item.videoId || "").slice(0, 500),
+      title: String(item.title || "Untitled").slice(0, 120),
+      src: String(item.src || "").slice(0, 500),
+      at: Date.now(),
+    });
+    persist();
+  }
+  return p;
+}
+
+export function removeFromPlaylist(playlistId, ownerId, videoId) {
+  const p = db.playlists[playlistId];
+  if (!p || p.ownerId !== ownerId) return null;
+  p.items = p.items.filter((x) => x.videoId !== videoId);
+  persist();
+  return p;
+}
+
+export function deletePlaylist(playlistId, ownerId) {
+  const p = db.playlists[playlistId];
+  if (!p || p.ownerId !== ownerId) return false;
+  delete db.playlists[playlistId];
+  persist();
+  return true;
 }
 
 // --- Search --------------------------------------------------------------------

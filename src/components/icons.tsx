@@ -270,6 +270,15 @@ export function SendIcon(props: IconProps) {
   );
 }
 
+export function PlaylistIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 6h13M3 12h13M3 18h9" />
+      <path d="M17 12v9l5-3-5-3Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

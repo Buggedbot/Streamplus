@@ -8,12 +8,14 @@ import { TRENDING, REELS } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
 import { VideoCard } from "@/components/VideoCard";
 import { Shelf } from "@/components/Shelf";
+import { PlaylistSheet } from "@/components/PlaylistSheet";
 import {
   LinkIcon,
   DownloadIcon,
   PlayIcon,
   PlusIcon,
   BookmarkIcon,
+  PlaylistIcon,
 } from "@/components/icons";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
@@ -41,6 +43,7 @@ function WatchInner() {
   const [error, setError] = useState("");
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [saved, setSaved] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -161,17 +164,26 @@ function WatchInner() {
           <p className="text-base font-semibold line-clamp-1">{activeTitle}</p>
           <div className="flex shrink-0 items-center gap-2">
             {user && (
-              <button
-                onClick={toggleSave}
-                className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
-                  saved
-                    ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300"
-                    : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <BookmarkIcon width={15} height={15} filled={saved} />
-                {saved ? "Saved" : "Save"}
-              </button>
+              <>
+                <button
+                  onClick={toggleSave}
+                  className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
+                    saved
+                      ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300"
+                      : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <BookmarkIcon width={15} height={15} filled={saved} />
+                  {saved ? "Saved" : "Save"}
+                </button>
+                <button
+                  onClick={() => setPlaylistOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <PlaylistIcon width={15} height={15} />
+                  <span className="hidden sm:inline">Playlist</span>
+                </button>
+              </>
             )}
             {canDownload && (
               <a
@@ -243,6 +255,12 @@ function WatchInner() {
           </div>
         ))}
       </Shelf>
+
+      <PlaylistSheet
+        open={playlistOpen}
+        onClose={() => setPlaylistOpen(false)}
+        video={{ videoId: activeUrl, title: activeTitle, src: activeUrl }}
+      />
     </div>
   );
 }

@@ -3,9 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { HistoryIcon, BookmarkIcon, PlayIcon } from "@/components/icons";
+import {
+  HistoryIcon,
+  BookmarkIcon,
+  PlayIcon,
+  PlaylistIcon,
+} from "@/components/icons";
 
 type Item = { videoId: string; title: string; src: string; at: number };
+type Playlist = { id: string; title: string; items: { videoId: string }[] };
 
 function VideoGrid({ items, empty }: { items: Item[]; empty: string }) {
   if (items.length === 0) {
@@ -46,9 +52,10 @@ function VideoGrid({ items, empty }: { items: Item[]; empty: string }) {
 
 export default function LibraryPage() {
   const { user, loading } = useAuth();
-  const [tab, setTab] = useState<"history" | "saved">("history");
+  const [tab, setTab] = useState<"history" | "saved" | "playlists">("history");
   const [history, setHistory] = useState<Item[]>([]);
   const [saved, setSaved] = useState<Item[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -60,6 +67,10 @@ export default function LibraryPage() {
     fetch("/api/saved")
       .then((r) => r.json())
       .then((d) => alive && setSaved(Array.isArray(d.saved) ? d.saved : []))
+      .catch(() => {});
+    fetch("/api/playlists")
+      .then((r) => r.json())
+      .then((d) => alive && setPlaylists(d.playlists ?? []))
       .catch(() => {});
     return () => {
       alive = false;
@@ -92,6 +103,7 @@ export default function LibraryPage() {
           [
             { key: "history", label: "Continue watching", Icon: HistoryIcon },
             { key: "saved", label: "Saved", Icon: BookmarkIcon },
+            { key: "playlists", label: "Playlists", Icon: PlaylistIcon },
           ] as const
         ).map(({ key, label, Icon }) => (
           <button
@@ -110,17 +122,44 @@ export default function LibraryPage() {
       </div>
 
       <div className="mt-6">
-        {tab === "history" ? (
+        {tab === "history" && (
           <VideoGrid
             items={history}
             empty="Nothing watched yet — play something and it'll show up here."
           />
-        ) : (
+        )}
+        {tab === "saved" && (
           <VideoGrid
             items={saved}
             empty="No saved videos — tap the bookmark on any video to keep it here."
           />
         )}
+        {tab === "playlists" &&
+          (playlists.length === 0 ? (
+            <p className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-10 text-center text-sm text-white/40">
+              No playlists yet — use “Playlist” on any video to make one.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {playlists.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/playlists/${p.id}`}
+                  className="group card-lift"
+                >
+                  <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-violet-700/50 to-fuchsia-700/40 border border-white/10 group-hover:border-white/25 flex items-center justify-center">
+                    <PlaylistIcon width={30} height={30} className="text-white/80" />
+                    <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-2 py-0.5 text-xs">
+                      {p.items.length}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold line-clamp-1">
+                    {p.title}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          ))}
       </div>
     </div>
   );

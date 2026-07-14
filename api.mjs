@@ -254,6 +254,53 @@ export async function handleApi(req, res) {
       return json(res, 200, store.search(q)), true;
     }
 
+    // --- Playlists ---
+    if (path === "/api/playlists" && method === "GET") {
+      const me = currentUser(req);
+      const owner = url.searchParams.get("owner");
+      if (owner) return json(res, 200, { playlists: store.listPlaylists(owner) }), true;
+      return json(res, 200, { playlists: me ? store.listPlaylists(me.id) : [] }), true;
+    }
+
+    if (path === "/api/playlists" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in first." }), true;
+      const { title } = await readBody(req);
+      return json(res, 200, { playlist: store.createPlaylist(me, title) }), true;
+    }
+
+    if (path.startsWith("/api/playlists/") && method === "GET") {
+      const pid = path.slice("/api/playlists/".length);
+      const playlist = store.getPlaylist(pid);
+      if (!playlist) return json(res, 404, { error: "Not found" }), true;
+      return json(res, 200, { playlist }), true;
+    }
+
+    if (path === "/api/playlists/add" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in first." }), true;
+      const { playlistId, videoId, title, src } = await readBody(req);
+      const p = store.addToPlaylist(playlistId, me.id, { videoId, title, src });
+      if (!p) return json(res, 404, { error: "Playlist not found." }), true;
+      return json(res, 200, { playlist: p }), true;
+    }
+
+    if (path === "/api/playlists/remove" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in first." }), true;
+      const { playlistId, videoId } = await readBody(req);
+      const p = store.removeFromPlaylist(playlistId, me.id, videoId);
+      if (!p) return json(res, 404, { error: "Playlist not found." }), true;
+      return json(res, 200, { playlist: p }), true;
+    }
+
+    if (path === "/api/playlists/delete" && method === "POST") {
+      const me = currentUser(req);
+      if (!me) return json(res, 401, { error: "Sign in first." }), true;
+      const { playlistId } = await readBody(req);
+      return json(res, 200, { ok: store.deletePlaylist(playlistId, me.id) }), true;
+    }
+
     // --- Reports (moderation) ---
     if (path === "/api/report" && method === "POST") {
       const me = currentUser(req);
